@@ -1,0 +1,1 @@
+import{t as e}from"./buffer-CrYjA9Fa.js";export default e();

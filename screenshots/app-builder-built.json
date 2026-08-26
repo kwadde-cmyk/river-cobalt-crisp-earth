@@ -1,0 +1,38 @@
+{
+  "url": "http://127.0.0.1:8081/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Scriptwerk",
+      "hasCanvas": false,
+      "bodyTextLen": 688,
+      "bodyTextHash": "271984802f868d0a6388f4b78919b60530a318bca7270c9ba64fc15c627ae758",
+      "bodyTextPrefix": "Scriptwerk USB Import Export Neu DE EN Stufen Operatoren STUFEN ",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Scriptwerk",
+      "hasCanvas": false,
+      "bodyTextLen": 182,
+      "bodyTextHash": "e92dacf7d6ed357a765c7b02dca50aeb49c606fd343eb52487294af9ccd0339b",
+      "bodyTextPrefix": "Scriptwerk USB Import Export Neu DE EN Stufen Baum Lesart SCHLÜS",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-built.json",
+  "divergesFromBaseline": false,
+  "baselineReasons": []
+}
