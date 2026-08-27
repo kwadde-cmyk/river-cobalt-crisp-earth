@@ -1,11 +1,15 @@
 import type { MsNode } from "./ast.ts";
+import { visit } from "./ast.ts";
 import { uid } from "../utils.ts";
+import { baseKeyName } from "./keys.ts";
 
 export interface Stage {
   id: string;
   delay: number;
   k: number;
   keys: string[];
+  /** Keys that must sign (AND). Remaining keys are an OR / k-of-rest. */
+  required?: string[];
 }
 
 export const DELAY_PRESETS = [0, 1, 144, 1008, 4320, 52596, 60000, 65534] as const;
@@ -24,12 +28,17 @@ export function nextStageDelay(stages: Stage[]): number {
 
 function cleanedStages(stages: Stage[]) {
   return stages
-    .map((s) => ({
-      ...s,
-      keys: s.keys.map((k) => k.trim()).filter(Boolean),
-      delay: Math.max(0, Math.round(Number(s.delay) || 0)),
-      k: Math.max(1, Math.round(Number(s.k) || 1)),
-    }))
+    .map((s) => {
+      const keys = s.keys.map((k) => k.trim()).filter(Boolean);
+      const required = (s.required ?? []).map((k) => k.trim()).filter((k) => keys.includes(k));
+      return {
+        ...s,
+        keys,
+        required: required.length ? required : undefined,
+        delay: Math.max(0, Math.round(Number(s.delay) || 0)),
+        k: Math.max(1, Math.round(Number(s.k) || 1)),
+      };
+    })
     .filter((s) => s.keys.length > 0)
     .sort((a, b) => a.delay - b.delay || a.id.localeCompare(b.id));
 }
@@ -93,16 +102,61 @@ export function compileStages(
   }
 
   const aliases: string[] = [];
+  function aliasName(name: string): string {
+    const a = alias(name);
+    aliases.push(a);
+    return a;
+  }
+
+  function pk(name: string): MsNode {
+    return { id: uid(), kind: "pk", key: name };
+  }
+  function wrapV(child: MsNode): MsNode {
+    return { id: uid(), kind: "wrap", wrap: "v", child };
+  }
+  function andV(left: MsNode, right: MsNode): MsNode {
+    return { id: uid(), kind: "and_v", left: wrapV(left), right };
+  }
+  function orD(left: MsNode, right: MsNode): MsNode {
+    return { id: uid(), kind: "or_d", left, right };
+  }
+  function andAll(nodes: MsNode[]): MsNode {
+    return nodes.reduce((acc, n) => andV(acc, n));
+  }
+  function orAll(nodes: MsNode[]): MsNode {
+    return nodes.reduce((acc, n) => orD(acc, n));
+  }
+
   function body(s: (typeof cleaned)[number]): MsNode {
+    const mapped = new Map<string, string>();
     const names = s.keys.map((k) => {
-      const a = alias(k);
-      aliases.push(a);
-      return a;
+      if (!mapped.has(k)) mapped.set(k, aliasName(k));
+      return mapped.get(k)!;
     });
-    const k = Math.min(Math.max(s.k, 1), names.length);
-    if (names.length === 1 && k === 1) {
-      return { id: uid(), kind: "pk", key: names[0]! };
+    const reqNames = (s.required ?? [])
+      .map((k) => mapped.get(k))
+      .filter((n): n is string => Boolean(n));
+    const rest = names.filter((n) => !reqNames.includes(n));
+    if (reqNames.length && rest.length) {
+      const must = reqNames.length === 1 ? pk(reqNames[0]!) : andAll(reqNames.map(pk));
+      const restK = Math.max(1, Math.min((s.k || 1) - reqNames.length, rest.length));
+      const choice =
+        restK >= rest.length
+          ? rest.length === 1
+            ? pk(rest[0]!)
+            : { id: uid(), kind: "multi" as const, k: rest.length, keys: rest }
+          : restK === 1
+            ? rest.length === 1
+              ? pk(rest[0]!)
+              : orAll(rest.map(pk))
+            : { id: uid(), kind: "multi" as const, k: restK, keys: rest };
+      return andV(must, choice);
     }
+    if (reqNames.length && !rest.length) {
+      return reqNames.length === 1 ? pk(reqNames[0]!) : andAll(reqNames.map(pk));
+    }
+    const k = Math.min(Math.max(s.k, 1), names.length);
+    if (names.length === 1 && k === 1) return pk(names[0]!);
     return { id: uid(), kind: "multi", k, keys: names };
   }
 
@@ -122,4 +176,189 @@ export function compileStages(
     acc = { id: uid(), kind: "or_i", left: locked(cleaned[i]!), right: acc };
   }
   return { root: acc, aliases };
+}
+
+function unwrap(n: MsNode): MsNode {
+  while (n.kind === "wrap") n = n.child;
+  return n;
+}
+
+function splitDisjuncts(n: MsNode): MsNode[] {
+  n = unwrap(n);
+  if (n.kind === "or_i" || n.kind === "or_d" || n.kind === "or_c" || n.kind === "or_b") {
+    return [...splitDisjuncts(n.left), ...splitDisjuncts(n.right)];
+  }
+  if (n.kind === "andor") {
+    const xy: MsNode = { id: uid(), kind: "and_v", left: n.x, right: n.y };
+    return [...splitDisjuncts(xy), ...splitDisjuncts(n.z)];
+  }
+  return [n];
+}
+
+function peelLock(n: MsNode): { delay: number; body: MsNode } {
+  n = unwrap(n);
+  if (n.kind === "older" || n.kind === "after") {
+    return { delay: n.n, body: { id: uid(), kind: "hole" } };
+  }
+  if (n.kind === "and_v" || n.kind === "and_b") {
+    const L = peelLock(n.left);
+    const R = peelLock(n.right);
+    const delay = L.delay + R.delay;
+    const lHole = L.body.kind === "hole";
+    const rHole = R.body.kind === "hole";
+    if (lHole && rHole) return { delay, body: { id: uid(), kind: "hole" } };
+    if (lHole) return { delay, body: R.body };
+    if (rHole) return { delay, body: L.body };
+    return {
+      delay,
+      body: { id: uid(), kind: n.kind, left: L.body, right: R.body },
+    };
+  }
+  return { delay: 0, body: n };
+}
+
+type KeyShape =
+  | { type: "pk"; key: string }
+  | { type: "multi"; k: number; keys: string[] }
+  | { type: "and"; parts: KeyShape[] }
+  | { type: "or"; parts: KeyShape[] };
+
+function shapeOf(n: MsNode): KeyShape | null {
+  n = unwrap(n);
+  if (n.kind === "pk" || n.kind === "pkh") return { type: "pk", key: baseKeyName(n.key) };
+  if (n.kind === "multi") {
+    return { type: "multi", k: n.k, keys: [...new Set(n.keys.map(baseKeyName))] };
+  }
+  if (n.kind === "older" || n.kind === "after" || n.kind === "hole") return null;
+  if (n.kind === "and_v" || n.kind === "and_b") {
+    const L = shapeOf(n.left);
+    const R = shapeOf(n.right);
+    if (!L) return R;
+    if (!R) return L;
+    const parts = [...(L.type === "and" ? L.parts : [L]), ...(R.type === "and" ? R.parts : [R])];
+    return { type: "and", parts };
+  }
+  if (n.kind === "or_i" || n.kind === "or_d" || n.kind === "or_c" || n.kind === "or_b") {
+    const L = shapeOf(n.left);
+    const R = shapeOf(n.right);
+    if (!L) return R;
+    if (!R) return L;
+    const parts = [...(L.type === "or" ? L.parts : [L]), ...(R.type === "or" ? R.parts : [R])];
+    return { type: "or", parts };
+  }
+  if (n.kind === "thresh") {
+    const parts = n.children.map(shapeOf);
+    if (parts.some((p) => !p)) return null;
+    const keys = [...new Set(parts.flatMap((p) => shapeKeys(p!)))];
+    return { type: "multi", k: Math.min(n.k, keys.length), keys };
+  }
+  return null;
+}
+
+function shapeKeys(s: KeyShape): string[] {
+  if (s.type === "pk") return [s.key];
+  if (s.type === "multi") return s.keys;
+  return s.parts.flatMap(shapeKeys);
+}
+
+function flattenShape(shape: KeyShape): { keys: string[]; k: number; required?: string[] } {
+  if (shape.type === "pk") return { keys: [shape.key], k: 1, required: [shape.key] };
+  if (shape.type === "multi") {
+    const keys = [...new Set(shape.keys)];
+    const required = shape.k >= keys.length ? keys : undefined;
+    return { keys, k: Math.min(shape.k, keys.length), required };
+  }
+  if (shape.type === "and") {
+    const parts = shape.parts.map(flattenShape);
+    const keys = [...new Set(parts.flatMap((p) => p.keys))];
+    const required = [
+      ...new Set(parts.flatMap((p) => p.required ?? (p.k >= p.keys.length ? p.keys : []))),
+    ].filter((k) => keys.includes(k));
+    const k = Math.min(
+      keys.length,
+      parts.reduce((sum, p) => sum + p.k, 0),
+    );
+    return { keys, k, required: required.length ? required : undefined };
+  }
+  const parts = shape.parts.map(flattenShape);
+  const keys = [...new Set(parts.flatMap((p) => p.keys))];
+  const k = Math.min(...parts.map((p) => p.k));
+  return { keys, k };
+}
+
+export function stageFormula(stage: Stage): string {
+  const req = (stage.required ?? []).filter((k) => stage.keys.includes(k));
+  const rest = stage.keys.filter((k) => !req.includes(k));
+  if (req.length && rest.length) {
+    const must = req.join(" + ");
+    const choice = rest.length === 1 ? rest[0]! : `(${rest.join(" | ")})`;
+    return `${must} + ${choice}`;
+  }
+  if (req.length && !rest.length) return req.join(" + ");
+  if (stage.k >= stage.keys.length) return stage.keys.join(" + ");
+  return `${stage.k}/${stage.keys.length} ${stage.keys.join(" · ")}`;
+}
+
+function stageSig(delay: number, keys: string[], k: number, required?: string[]): string {
+  const sorted = [...keys].sort();
+  const req = (required ?? []).filter((x) => keys.includes(x)).sort();
+  const reqPart =
+    req.length > 0 ? req.join(",") : k >= sorted.length || sorted.length <= 1 ? sorted.join(",") : "";
+  return `${delay}|${k}|${sorted.join(",")}|${reqPart}`;
+}
+
+/** Recover the left-hand stage GUI from an imported miniscript / wallet policy. */
+export function inferStages(root: MsNode | null): Stage[] {
+  if (!root || root.kind === "hole") return [];
+  const stages: Stage[] = [];
+  for (const branch of splitDisjuncts(root)) {
+    const { delay, body } = peelLock(branch);
+    const shape = shapeOf(body);
+    if (!shape) continue;
+    const flat = flattenShape(shape);
+    if (!flat.keys.length) continue;
+    stages.push({
+      id: uid("st"),
+      delay: Math.max(0, Math.min(65534, delay)),
+      k: Math.max(1, flat.k),
+      keys: flat.keys,
+      required: flat.required,
+    });
+  }
+  if (!stages.length) return [];
+  const merged = new Map<string, Stage>();
+  for (const s of stages) {
+    const sig = stageSig(s.delay, s.keys, s.k, s.required);
+    if (!merged.has(sig)) merged.set(sig, s);
+  }
+  return [...merged.values()].sort((a, b) => a.delay - b.delay);
+}
+
+export function stageHighlightIds(
+  root: MsNode | null,
+  stages: Stage[],
+  stageId: string | null,
+): Set<string> {
+  const ids = new Set<string>();
+  if (!root || !stageId) return ids;
+  const target = stages.find((s) => s.id === stageId);
+  if (!target) return ids;
+  const want = stageSig(target.delay, target.keys, target.k, target.required);
+  for (const branch of splitDisjuncts(root)) {
+    const { delay, body } = peelLock(branch);
+    const shape = shapeOf(body);
+    if (!shape) continue;
+    const flat = flattenShape(shape);
+    if (stageSig(delay, flat.keys, flat.k, flat.required) !== want) continue;
+    visit(branch, (n) => ids.add(n.id));
+    break;
+  }
+  if (ids.size) return ids;
+  const names = new Set(target.keys.map(baseKeyName));
+  visit(root, (n) => {
+    if ((n.kind === "pk" || n.kind === "pkh") && names.has(baseKeyName(n.key))) ids.add(n.id);
+    if (n.kind === "multi" && n.keys.some((k) => names.has(baseKeyName(k)))) ids.add(n.id);
+    if ((n.kind === "older" || n.kind === "after") && n.n === target.delay && target.delay > 0) ids.add(n.id);
+  });
+  return ids;
 }

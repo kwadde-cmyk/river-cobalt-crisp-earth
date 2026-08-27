@@ -14,7 +14,10 @@ const DialogOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
-    className={cn("fixed inset-0 z-50 bg-bg/70", className)}
+    className={cn(
+      "fixed inset-0 z-50 bg-bg/70 data-[state=closed]:pointer-events-none data-[state=closed]:hidden",
+      className,
+    )}
     {...props}
   />
 ));
@@ -23,7 +26,14 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 const DialogContent = React.forwardRef<
   React.ComponentRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+>(({ className, children, ...props }, ref) => {
+  React.useEffect(() => {
+    return () => {
+      document.body.style.pointerEvents = "";
+      document.body.removeAttribute("data-scroll-locked");
+    };
+  }, []);
+  return (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
@@ -41,7 +51,8 @@ const DialogContent = React.forwardRef<
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>
   </DialogPortal>
-));
+  );
+});
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 function DialogHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {

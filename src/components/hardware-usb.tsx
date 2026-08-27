@@ -33,10 +33,9 @@ export function HardwareButton() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" aria-pressed={ready}>
+        <Button variant="outline" size="icon" className="relative size-9" aria-label={t("header.usb")} aria-pressed={ready}>
           <Usb />
-          {t("header.usb")}
-          {ready ? <span className="ml-0.5 size-1.5 rounded-full bg-ok" aria-hidden /> : null}
+          {ready ? <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-ok" aria-hidden /> : null}
         </Button>
       </DialogTrigger>
       <HardwareDialogBody />
@@ -65,6 +64,7 @@ function HardwareDialogBody() {
   const root = useStudio((s) => s.root);
   const network = useStudio((s) => s.network);
   const reuseKeys = useStudio((s) => s.reuseKeys);
+  const dialogOpen = useHardware((s) => s.open);
   const [path, setPath] = useState(defaultAccountPath(network));
   const [busyAction, setBusyAction] = useState<string | null>(null);
 
@@ -75,8 +75,8 @@ function HardwareDialogBody() {
   const pending = keys.find((k) => k.id === pendingKeyId) ?? null;
   const emptyCount = keys.filter((k) => !k.xpub.trim()).length;
   const bip = useMemo(
-    () => (root ? compileBip388(root, keys, "Scriptwerk", reuseKeys) : null),
-    [root, keys, reuseKeys],
+    () => (dialogOpen && root ? compileBip388(root, keys, "Scriptwerk", reuseKeys) : null),
+    [dialogOpen, root, keys, reuseKeys],
   );
   const ready = status === "ready" || status === "busy";
   const errText = error ? localizeMessage(locale, error) : null;

@@ -35,12 +35,41 @@
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    pointer-events: auto !important;
   }
 
   body {
     background: var(--color-bg);
     color: var(--color-fg);
     font-family: var(--font-sans);
+    pointer-events: auto !important;
+  }
+
+  [data-radix-dialog-overlay][data-state="closed"],
+  [data-radix-dialog-content][data-state="closed"] {
+    display: none !important;
+    pointer-events: none !important;
+  }
+
+  @media (max-width: 1023px) {
+    [data-layout="desktop"] {
+      display: none !important;
+      pointer-events: none !important;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    [data-layout="mobile"] {
+      display: none !important;
+      pointer-events: none !important;
+    }
+  }
+
+  header,
+  [role="tablist"],
+  button,
+  [role="button"] {
+    touch-action: manipulation;
   }
 
   button:not(:disabled),

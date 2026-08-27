@@ -23,8 +23,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { QrPreview, QrScanner, FilePick } from "@/components/qr-io";
 import { HardwareButton } from "@/components/hardware-usb";
+import { NodeButton } from "@/components/node-rpc";
 import { useT } from "@/lib/use-t";
-import { Download, FolderOpen, QrCode, RotateCcw } from "lucide-react";
+import { Download, FolderOpen, QrCode, Redo2, RotateCcw, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 
 export function ImportExportBar() {
@@ -35,18 +36,25 @@ export function ImportExportBar() {
   const importText = useStudio((s) => s.importText);
   const importError = useStudio((s) => s.importError);
   const reset = useStudio((s) => s.reset);
+  const undo = useStudio((s) => s.undo);
+  const redo = useStudio((s) => s.redo);
+  const canUndo = useStudio((s) => s.past.length > 0);
+  const canRedo = useStudio((s) => s.future.length > 0);
   const [open, setOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [walletName, setWalletName] = useState("Scriptwerk");
 
-  const compiled = root ? compileDescriptor(root, keys, reuseKeys) : null;
+  const compiled = useMemo(
+    () => (root ? compileDescriptor(root, keys, reuseKeys) : null),
+    [root, keys, reuseKeys],
+  );
   const miniscript = compiled?.miniscript ?? "";
   const descriptor = compiled?.ok ? compiled.descriptor : "";
-  const bsms = descriptor ? compileBsms(descriptor) : "";
+  const bsms = useMemo(() => (descriptor ? compileBsms(descriptor) : ""), [descriptor]);
   const bip = useMemo(
-    () => (root ? compileBip388(root, keys, walletName, reuseKeys) : null),
-    [root, keys, walletName, reuseKeys],
+    () => (exportOpen && root ? compileBip388(root, keys, walletName, reuseKeys) : null),
+    [exportOpen, root, keys, walletName, reuseKeys],
   );
 
   function download(filename: string, body: string) {
@@ -87,12 +95,13 @@ export function ImportExportBar() {
   );
 
   return (
-    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+    <div className="flex flex-wrap items-center justify-end gap-1.5">
       <HardwareButton />
+      <NodeButton />
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
-          <Button variant="outline" size="sm">
-            <FolderOpen /> {t("header.import")}
+          <Button variant="outline" size="icon" className="size-9" aria-label={t("header.import")}>
+            <FolderOpen />
           </Button>
         </DialogTrigger>
         <DialogContent className="w-[min(640px,calc(100vw-1.5rem))]">
@@ -157,8 +166,8 @@ export function ImportExportBar() {
 
       <Dialog open={exportOpen} onOpenChange={setExportOpen}>
         <DialogTrigger asChild>
-          <Button variant="outline" size="sm">
-            <QrCode /> {t("header.export")}
+          <Button variant="outline" size="icon" className="size-9" aria-label={t("header.export")}>
+            <QrCode />
           </Button>
         </DialogTrigger>
         <DialogContent className="max-h-[min(720px,calc(100dvh-2rem))] w-[min(640px,calc(100vw-1.5rem))] overflow-y-auto">
@@ -225,8 +234,14 @@ export function ImportExportBar() {
         </DialogContent>
       </Dialog>
 
-      <Button variant="ghost" size="sm" onClick={reset}>
-        <RotateCcw /> {t("header.reset")}
+      <Button variant="ghost" size="icon" className="size-9" onClick={undo} disabled={!canUndo} aria-label={t("header.undo")}>
+        <Undo2 />
+      </Button>
+      <Button variant="ghost" size="icon" className="size-9" onClick={redo} disabled={!canRedo} aria-label={t("header.redo")}>
+        <Redo2 />
+      </Button>
+      <Button variant="ghost" size="icon" className="size-9" onClick={reset} aria-label={t("header.reset")}>
+        <RotateCcw />
       </Button>
     </div>
   );

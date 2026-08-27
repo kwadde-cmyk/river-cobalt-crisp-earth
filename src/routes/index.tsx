@@ -1,8 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { StudioShell } from "@/components/studio-shell";
 
-export const Route = createFileRoute("/")({ component: Home });
-
-function Home() {
-  return <StudioShell />;
-}
+export const Route = createFileRoute("/")({
+  component: function Home() {
+    return null;
+  },
+});

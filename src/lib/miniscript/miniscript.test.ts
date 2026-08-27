@@ -7,6 +7,7 @@ import {
   applyKeyMaterial,
   attachChildOrReplace,
   buildKeyTree,
+  groupKeysByFingerprint,
   emptyKey,
   extractKeysFromTree,
   formatBip32Path,
@@ -20,7 +21,7 @@ import {
   parseKeyList,
 } from "./keys.ts";
 import { parseAny } from "./parser.ts";
-import { compileStages } from "./stages.ts";
+import { compileStages, inferStages, stageFormula, stageHighlightIds } from "./stages.ts";
 import {
   compileBip388,
   formatBitboxJson,
@@ -260,6 +261,15 @@ describe("stages", () => {
     assert.ok(exp.groups.some((g) => g.delay === 65534));
     const en = explainPolicy(root, "en");
     assert.match(en.title, /time-locked|now|later|immediate/i);
+    const recovered = inferStages(root);
+    assert.equal(recovered.length, 3);
+    assert.equal(recovered[0]?.delay, 0);
+    assert.equal(recovered[0]?.k, 2);
+    assert.deepEqual(recovered[0]?.keys, ["A", "B", "C"]);
+    assert.equal(recovered[1]?.delay, 60000);
+    assert.deepEqual(recovered[1]?.keys, ["A", "D"]);
+    assert.equal(recovered[2]?.delay, 65534);
+    assert.deepEqual(recovered[2]?.keys, ["B", "C", "D"]);
   });
 
   it("compiles a complete policy to a checksummed descriptor with alias xpubs", () => {
@@ -288,6 +298,14 @@ describe("stages", () => {
       false,
     );
     assert.equal(compileMiniscript(root), "or_i(and_v(v:pk(A1),older(144)),multi(2,A,B))");
+    const recovered = inferStages(root);
+    assert.equal(recovered.length, 2);
+    assert.equal(recovered[0]?.delay, 0);
+    assert.deepEqual(recovered[0]?.keys, ["A", "B"]);
+    assert.equal(recovered[0]?.k, 2);
+    assert.equal(recovered[1]?.delay, 144);
+    assert.deepEqual(recovered[1]?.keys, ["A"]);
+    assert.equal(recovered[1]?.k, 1);
     const parent = {
       ...emptyKey("A"),
       xpub: XPUB,
@@ -307,6 +325,67 @@ describe("stages", () => {
     const a1 = expanded.find((k) => k.name === "A1");
     assert.equal(a1?.derivation, "48'/0'/1'/2'");
     assert.ok(a1?.xpub.startsWith("xpub6C6n"));
+  });
+
+  it("infers required key plus OR and delayed branches", () => {
+    const { node } = parseAny(
+      "or_i(and_v(v:multi(2,F,G,H),older(65534)),or_i(and_v(v:pk(D),and_v(v:pk(E),older(60000))),and_v(v:pk(A),or_d(pk(B),pk(C)))))",
+    );
+    const stages = inferStages(node);
+    assert.equal(stages.length, 3);
+    assert.equal(stages[0]?.delay, 0);
+    assert.deepEqual(stages[0]?.keys, ["A", "B", "C"]);
+    assert.deepEqual(stages[0]?.required, ["A"]);
+    assert.equal(stages[0]?.k, 2);
+    assert.equal(stageFormula(stages[0]!), "A + (B | C)");
+    assert.equal(stages[1]?.delay, 60000);
+    assert.deepEqual(stages[1]?.keys, ["D", "E"]);
+    assert.deepEqual(stages[1]?.required, ["D", "E"]);
+    assert.equal(stages[2]?.delay, 65534);
+    assert.deepEqual(stages[2]?.keys, ["F", "G", "H"]);
+    assert.equal(stages[2]?.k, 2);
+    const hit = stageHighlightIds(node, stages, stages[0]!.id);
+    assert.ok(hit.size >= 3);
+    const miss = stageHighlightIds(node, stages, stages[2]!.id);
+    assert.ok(miss.size >= 2);
+    assert.notEqual(hit.size, miss.size);
+  });
+
+  it("highlights distinct compiled stage branches", () => {
+    const stages = [
+      { id: "s0", delay: 0, k: 2, keys: ["A", "B", "C"] },
+      { id: "s1", delay: 52596, k: 2, keys: ["A", "B", "C", "D"] },
+    ];
+    const { root } = compileStages(stages, false);
+    const a = stageHighlightIds(root, stages, "s0");
+    const b = stageHighlightIds(root, stages, "s1");
+    assert.ok(a.size >= 1);
+    assert.ok(b.size >= 2);
+    for (const id of a) assert.equal(b.has(id), false);
+  });
+
+  it("highlights a 1-key stage even without required[]", () => {
+    const stages = [{ id: "solo", delay: 0, k: 1, keys: ["A"] }];
+    const { root } = compileStages(stages, false);
+    const hit = stageHighlightIds(root, stages, "solo");
+    assert.ok(hit.has(root.id));
+  });
+
+  it("groups same-fingerprint keys as master and child", () => {
+    const childXpub =
+      "xpub6C6nQwHaTbszB3GXfbJNNGYUmGQmAwb1zUfxCQ4QFJYpNaDw6P8vqQdPdFMv1eVqBtgvHXuiVMtobd6MwPkhBUFC14BHupS6aHiJvRoG9sK";
+    const grouped = groupKeysByFingerprint([
+      { ...emptyKey("A"), fingerprint: "deadbeef", derivation: "48'/0'/0'/2'", xpub: XPUB },
+      { ...emptyKey("B"), fingerprint: "DEADBEEF", derivation: "48'/0'/1'/2'", xpub: childXpub },
+      { ...emptyKey("C"), fingerprint: "aaaaaaaa", derivation: "48'/0'/0'/2'", xpub: XPUB.replace("Bosf", "Bosz") },
+    ]);
+    assert.equal(grouped.keys.length, 2);
+    const master = grouped.keys.find((k) => k.name === "A");
+    assert.ok(master);
+    assert.equal(master!.children.length, 1);
+    assert.equal(master!.children[0]?.path, "48'/0'/1'/2'");
+    assert.equal(grouped.rename.get("B"), "A1");
+    assert.equal(grouped.keys.some((k) => k.name === "B"), false);
   });
 });
 

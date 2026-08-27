@@ -33,7 +33,7 @@ import { useT } from "@/lib/use-t";
 import { KeyRound, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 
-export function KeyBoard() {
+export function KeyBoard({ fill = false }: { fill?: boolean }) {
   const { t } = useT();
   const rawKeys = useStudio((s) => s.keys);
   const keys = rawKeys.map(normalizeKeyEntry);
@@ -59,12 +59,8 @@ export function KeyBoard() {
   }
 
   return (
-    <div className="shrink-0 border-b border-border bg-bg">
-      <div className="flex flex-wrap items-end gap-3 px-4 pt-3 pb-2">
-        <div className="min-w-0 flex-1">
-          <p className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("keys.title")}</p>
-          <p className="mt-0.5 text-xs text-fg-muted">{t("keys.blurb")}</p>
-        </div>
+    <div className={fill ? "flex min-h-0 flex-1 flex-col overflow-hidden bg-bg" : "shrink-0 border-b border-border bg-bg"}>
+      <div className="flex flex-wrap items-end justify-end gap-3 px-4 pt-3 pb-2">
         <div className="flex flex-col items-center gap-1">
           <span className="inline-flex items-center gap-1 text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">
             <KeyRound className="size-3" aria-hidden />
@@ -78,16 +74,6 @@ export function KeyBoard() {
             >
               <button
                 type="button"
-                aria-pressed={reuseKeys}
-                onClick={() => setReuseKeys(true)}
-                className={`h-8 rounded-full px-3 text-xs ${
-                  reuseKeys ? "bg-muted text-fg" : "text-fg-muted hover:text-fg"
-                }`}
-              >
-                {t("keys.reuseOnShort")}
-              </button>
-              <button
-                type="button"
                 aria-pressed={!reuseKeys}
                 onClick={() => setReuseKeys(false)}
                 className={`h-8 rounded-full px-3 text-xs ${
@@ -95,6 +81,16 @@ export function KeyBoard() {
                 }`}
               >
                 {t("keys.reuseOffShort")}
+              </button>
+              <button
+                type="button"
+                aria-pressed={reuseKeys}
+                onClick={() => setReuseKeys(true)}
+                className={`h-8 rounded-full px-3 text-xs ${
+                  reuseKeys ? "bg-muted text-fg" : "text-fg-muted hover:text-fg"
+                }`}
+              >
+                {t("keys.reuseOnShort")}
               </button>
             </div>
             <NestedKeyStack present={childPresent} total={Math.max(childNeeded, childPresent)} />
@@ -127,7 +123,7 @@ export function KeyBoard() {
           </button>
         </div>
       </div>
-      <div className="max-h-64 overflow-auto px-4 pb-3">
+      <div className={fill ? "min-h-0 flex-1 overflow-auto px-4 pb-3" : "max-h-40 overflow-auto px-4 pb-3"}>
         {visible.length === 0 ? (
           <p className="py-2 text-xs text-fg-muted">{t("keys.empty")}</p>
         ) : (

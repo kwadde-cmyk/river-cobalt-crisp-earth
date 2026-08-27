@@ -317,6 +317,104 @@ export function tokenNeedsAction(token: string, keys: KeyEntry[], reuse = true):
   return !childForAccount(key, idx)?.xpub.trim();
 }
 
+export function groupKeysByFingerprint(keys: KeyEntry[]): {
+  keys: KeyEntry[];
+  rename: Map<string, string>;
+} {
+  const rename = new Map<string, string>();
+  const groups = new Map<string, KeyEntry[]>();
+  const ungrouped: KeyEntry[] = [];
+  for (const raw of keys) {
+    const k = normalizeKeyEntry(raw);
+    const fp = formatFingerprint(k.fingerprint);
+    if (!fp) {
+      ungrouped.push(k);
+      continue;
+    }
+    const list = groups.get(fp) ?? [];
+    list.push(k);
+    groups.set(fp, list);
+  }
+  const out: KeyEntry[] = [...ungrouped];
+  for (const group of groups.values()) {
+    if (group.length === 1) {
+      out.push(group[0]!);
+      continue;
+    }
+    const sorted = [...group].sort((a, b) => {
+      const ia = parseAccountIndex(a.derivation) ?? 999;
+      const ib = parseAccountIndex(b.derivation) ?? 999;
+      if (ia !== ib) return ia - ib;
+      return a.name.localeCompare(b.name);
+    });
+    const uniqueXpub: KeyEntry[] = [];
+    for (const k of sorted) {
+      const hit = uniqueXpub.find((x) => x.xpub && k.xpub && x.xpub === k.xpub);
+      if (hit) {
+        rename.set(k.name, hit.name);
+        continue;
+      }
+      uniqueXpub.push(k);
+    }
+    const master = uniqueXpub[0]!;
+    const children = [...master.children];
+    for (let i = 1; i < uniqueXpub.length; i++) {
+      const extra = uniqueXpub[i]!;
+      const acc = parseAccountIndex(extra.derivation);
+      const alias = acc != null && acc > 0 ? `${master.name}${acc}` : `${master.name}${i}`;
+      if (!children.some((c) => c.xpub === extra.xpub)) {
+        children.push({
+          id: uid("ck"),
+          path: extra.derivation || extra.childPath || "",
+          xpub: extra.xpub,
+          fingerprint: extra.fingerprint || master.fingerprint,
+          note: extra.note || extra.name,
+        });
+      }
+      rename.set(extra.name, alias);
+    }
+    out.push({ ...master, children });
+  }
+  return { keys: out, rename };
+}
+
+export function collapseAliasKeys(keys: KeyEntry[], masters: string[]): KeyEntry[] {
+  const masterSet = new Set(masters);
+  if (!masterSet.size) return keys.map(normalizeKeyEntry);
+  const byName = new Map<string, KeyEntry>();
+  for (const raw of keys) {
+    const k = normalizeKeyEntry(raw);
+    const dest = masterSet.has(baseKeyName(k.name)) ? baseKeyName(k.name) : k.name;
+    const prev = byName.get(dest);
+    if (!prev) {
+      byName.set(dest, { ...k, name: dest });
+      continue;
+    }
+    if (k.xpub && k.xpub !== prev.xpub) {
+      if (!prev.children.some((c) => c.xpub === k.xpub)) {
+        prev.children = [
+          ...prev.children,
+          {
+            id: uid("ck"),
+            path: k.derivation || k.childPath || "",
+            xpub: k.xpub,
+            fingerprint: k.fingerprint,
+            note: k.note || k.name,
+          },
+        ];
+      }
+    } else if (!prev.xpub && k.xpub) {
+      byName.set(dest, {
+        ...prev,
+        xpub: k.xpub,
+        fingerprint: k.fingerprint || prev.fingerprint,
+        derivation: k.derivation || prev.derivation,
+      });
+    }
+  }
+  return [...byName.values()];
+}
+
 export function formatFingerprint(fp: string): string {
   return fp.replace(/^#/, "").replace(/^0x/i, "").trim().slice(0, 8).toLowerCase();
 }

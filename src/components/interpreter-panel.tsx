@@ -9,22 +9,28 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useT } from "@/lib/use-t";
 import { Check, Copy } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { NodeCheckCard } from "@/components/node-rpc";
 
 export function InterpreterPanel() {
   const { t, locale } = useT();
   const root = useStudio((s) => s.root);
   const keys = useStudio((s) => s.keys);
   const reuseKeys = useStudio((s) => s.reuseKeys);
-  const explained = root
-    ? explainPolicy(root, locale)
-    : explainPolicy({ id: "empty", kind: "hole" }, locale);
-  const issues = validatePolicy(root, locale);
-  const compiled = root
-    ? compileDescriptor(root, keys, reuseKeys)
-    : { ok: false, miniscript: "", descriptor: "", error: t("read.noPolicy") };
-  const ms = root ? compileMiniscript(root) : "";
+  const explained = useMemo(
+    () => explainPolicy(root ?? { id: "empty", kind: "hole" }, locale),
+    [root, locale],
+  );
+  const issues = useMemo(() => validatePolicy(root, locale), [root, locale]);
+  const compiled = useMemo(
+    () =>
+      root
+        ? compileDescriptor(root, keys, reuseKeys)
+        : { ok: false as const, miniscript: "", descriptor: "", error: t("read.noPolicy") },
+    [root, keys, reuseKeys, t],
+  );
+  const ms = useMemo(() => (root ? compileMiniscript(root) : ""), [root]);
 
   return (
     <ScrollArea className="h-full">
@@ -90,6 +96,8 @@ export function InterpreterPanel() {
             ))}
           </ul>
         </section>
+
+        <NodeCheckCard />
 
         <CopyBlock title="Miniscript" value={ms} />
         <CopyBlock

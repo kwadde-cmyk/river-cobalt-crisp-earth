@@ -8,6 +8,10 @@ const MAX_K = 3.5;
 
 type View = { x: number; y: number; k: number };
 
+function sameView(a: View, b: View): boolean {
+  return Math.abs(a.x - b.x) < 0.05 && Math.abs(a.y - b.y) < 0.05 && Math.abs(a.k - b.k) < 0.0005;
+}
+
 export function ZoomPane({
   contentWidth,
   contentHeight,
@@ -21,49 +25,59 @@ export function ZoomPane({
 }) {
   const { t } = useT();
   const viewportRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<View>({ x: 0, y: 0, k: 1 });
-  const [view, setView] = useState<View>({ x: 0, y: 0, k: 1 });
+  const dirtyRef = useRef(false);
   const dragRef = useRef<{ id: number; x: number; y: number; moved: boolean } | null>(null);
   const pinchRef = useRef<{
     a: number;
     b: number;
     dist: number;
-    midX: number;
-    midY: number;
     k: number;
   } | null>(null);
   const pointersRef = useRef(new Map<number, { x: number; y: number }>());
   const [grabbing, setGrabbing] = useState(false);
 
-  const apply = useCallback((next: View) => {
+  const paint = useCallback((next: View) => {
     const k = Math.min(MAX_K, Math.max(MIN_K, next.k));
     const v = { x: next.x, y: next.y, k };
+    if (sameView(v, viewRef.current)) return;
     viewRef.current = v;
-    setView(v);
+    const el = contentRef.current;
+    if (el) el.style.transform = `translate(${v.x}px, ${v.y}px) scale(${v.k})`;
   }, []);
 
   const fit = useCallback(() => {
     const el = viewportRef.current;
-    if (!el) return;
+    if (!el || el.clientWidth < 16 || el.clientHeight < 16) return;
     const pad = 28;
     const vw = Math.max(1, el.clientWidth - pad * 2);
     const vh = Math.max(1, el.clientHeight - pad * 2);
     const k = Math.min(1.15, Math.max(MIN_K, Math.min(vw / contentWidth, vh / contentHeight)));
-    apply({
+    dirtyRef.current = false;
+    paint({
       k,
       x: (el.clientWidth - contentWidth * k) / 2,
       y: (el.clientHeight - contentHeight * k) / 2,
     });
-  }, [apply, contentWidth, contentHeight]);
+  }, [paint, contentWidth, contentHeight]);
 
   useEffect(() => {
-    fit();
+    if (!dirtyRef.current) fit();
   }, [fit]);
 
   useEffect(() => {
     const el = viewportRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => fit());
+    let lastW = 0;
+    let lastH = 0;
+    const ro = new ResizeObserver((entries) => {
+      const cr = entries[0]?.contentRect;
+      if (cr.width < 16 || cr.height < 16) return;
+      lastW = cr.width;
+      lastH = cr.height;
+      if (!dirtyRef.current) fit();
+    });
     ro.observe(el);
     return () => ro.disconnect();
   }, [fit]);
@@ -77,10 +91,10 @@ export function ZoomPane({
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
       const cur = viewRef.current;
-      const factor = Math.exp(-e.deltaY * 0.0015);
-      const nextK = Math.min(MAX_K, Math.max(MIN_K, cur.k * factor));
+      const nextK = Math.min(MAX_K, Math.max(MIN_K, cur.k * Math.exp(-e.deltaY * 0.0015)));
       const ratio = nextK / cur.k;
-      apply({
+      dirtyRef.current = true;
+      paint({
         k: nextK,
         x: mx - (mx - cur.x) * ratio,
         y: my - (my - cur.y) * ratio,
@@ -88,7 +102,7 @@ export function ZoomPane({
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [apply]);
+  }, [paint]);
 
   useEffect(() => {
     if (!selectedRect) return;
@@ -106,11 +120,13 @@ export function ZoomPane({
     if (sy < pad) ny += pad - sy;
     if (sx + sw > el.clientWidth - pad) nx -= sx + sw - (el.clientWidth - pad);
     if (sy + sh > el.clientHeight - pad) ny -= sy + sh - (el.clientHeight - pad);
-    if (nx !== cur.x || ny !== cur.y) apply({ ...cur, x: nx, y: ny });
-  }, [selectedRect, apply]);
+    if (nx !== cur.x || ny !== cur.y) paint({ ...cur, x: nx, y: ny });
+  }, [selectedRect, paint]);
 
   function onPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
     if (e.button !== 0 && e.pointerType === "mouse") return;
+    const t = e.target as HTMLElement | null;
+    if (t?.closest("button, a, input, textarea, [role='tab']")) return;
     pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointersRef.current.size === 2) {
       const pts = [...pointersRef.current.values()];
@@ -121,8 +137,6 @@ export function ZoomPane({
         a: ids[0]!,
         b: ids[1]!,
         dist: Math.hypot(dx, dy) || 1,
-        midX: (pts[0]!.x + pts[1]!.x) / 2,
-        midY: (pts[0]!.y + pts[1]!.y) / 2,
         k: viewRef.current.k,
       };
       dragRef.current = null;
@@ -149,7 +163,8 @@ export function ZoomPane({
           const my = (a.y + b.y) / 2 - rect.top;
           const cur = viewRef.current;
           const ratio = nextK / cur.k;
-          apply({
+          dirtyRef.current = true;
+          paint({
             k: nextK,
             x: mx - (mx - cur.x) * ratio,
             y: my - (my - cur.y) * ratio,
@@ -162,16 +177,17 @@ export function ZoomPane({
     if (!d || d.id !== e.pointerId) return;
     const dx = e.clientX - d.x;
     const dy = e.clientY - d.y;
-    if (!d.moved && Math.hypot(dx, dy) < 5) return;
+    if (!d.moved && Math.hypot(dx, dy) < 12) return;
     if (!d.moved) {
       d.moved = true;
+      dirtyRef.current = true;
       setGrabbing(true);
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     }
     d.x = e.clientX;
     d.y = e.clientY;
     const cur = viewRef.current;
-    apply({ ...cur, x: cur.x + dx, y: cur.y + dy });
+    paint({ ...cur, x: cur.x + dx, y: cur.y + dy });
   }
 
   function endPointer(e: ReactPointerEvent<HTMLDivElement>) {
@@ -180,6 +196,8 @@ export function ZoomPane({
       pinchRef.current = null;
     }
     if (dragRef.current?.id === e.pointerId) {
+      const target = e.currentTarget as HTMLElement;
+      if (target.hasPointerCapture?.(e.pointerId)) target.releasePointerCapture(e.pointerId);
       dragRef.current = null;
       setGrabbing(false);
     }
@@ -193,7 +211,8 @@ export function ZoomPane({
     const mx = el.clientWidth / 2;
     const my = el.clientHeight / 2;
     const ratio = nextK / cur.k;
-    apply({
+    dirtyRef.current = true;
+    paint({
       k: nextK,
       x: mx - (mx - cur.x) * ratio,
       y: my - (my - cur.y) * ratio,
@@ -213,10 +232,11 @@ export function ZoomPane({
         onPointerCancel={endPointer}
       >
         <div
+          ref={contentRef}
           style={{
             width: contentWidth,
             height: contentHeight,
-            transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})`,
+            transform: `translate(${viewRef.current.x}px, ${viewRef.current.y}px) scale(${viewRef.current.k})`,
             transformOrigin: "0 0",
             willChange: "transform",
           }}

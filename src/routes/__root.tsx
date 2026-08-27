@@ -1,6 +1,7 @@
-import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
+import { createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
+import { StudioShell } from "@/components/studio-shell";
 import appCss from "../styles.css?url";
 
 const APP_NAME = "Scriptwerk";
@@ -38,7 +39,7 @@ export const Route = createRootRoute({
       <body>
         <PreviewHostBridge />
         <AuthProvider>
-          <Outlet />
+          <StudioShell />
         </AuthProvider>
         <Scripts />
       </body>

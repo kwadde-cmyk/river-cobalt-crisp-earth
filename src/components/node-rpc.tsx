@@ -1,0 +1,394 @@
+import { useEffect, useState } from "react";
+import { compileDescriptor } from "@/lib/miniscript/compile";
+import { bookmarkletHref, bridgeScript, openNodeTab, originOf, watchBridge } from "@/lib/bitcoind/bridge";
+import { useBitcoind } from "@/store/bitcoind";
+import type { DiagStatus } from "@/lib/bitcoind/diagnose";
+import { useStudio } from "@/store/studio";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { useT } from "@/lib/use-t";
+import { localizeMessage } from "@/lib/i18n";
+import { Server } from "lucide-react";
+import { toast } from "sonner";
+import { defaultRpcPort, isLanIpUrl, looksLikeStartos, normalizeRpcUrl } from "@/lib/bitcoind/rpc";
+
+export function NodeButton() {
+  const { t } = useT();
+  const open = useBitcoind((s) => s.open);
+  const setOpen = useBitcoind((s) => s.setOpen);
+  const status = useBitcoind((s) => s.status);
+  const ready = status === "ready";
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="icon" className="relative size-9" aria-label={t("header.node")} aria-pressed={ready}>
+          <Server />
+          {ready ? <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-ok" aria-hidden /> : null}
+        </Button>
+      </DialogTrigger>
+      <NodeDialogBody />
+    </Dialog>
+  );
+}
+
+function NodeDialogBody() {
+  const { t, locale } = useT();
+  const url = useBitcoind((s) => s.url);
+  const username = useBitcoind((s) => s.username);
+  const password = useBitcoind((s) => s.password);
+  const kind = useBitcoind((s) => s.kind);
+  const patch = useBitcoind((s) => s.patch);
+  const status = useBitcoind((s) => s.status);
+  const demo = useBitcoind((s) => s.demo);
+  const probe = useBitcoind((s) => s.probe);
+  const lastCheck = useBitcoind((s) => s.lastCheck);
+  const error = useBitcoind((s) => s.error);
+  const trace = useBitcoind((s) => s.trace);
+  const connectDemo = useBitcoind((s) => s.connectDemo);
+  const connectLive = useBitcoind((s) => s.connectLive);
+  const finishBridge = useBitcoind((s) => s.finishBridge);
+  const disconnect = useBitcoind((s) => s.disconnect);
+  const validate = useBitcoind((s) => s.validate);
+  const bridge = useBitcoind((s) => s.bridge);
+  const root = useStudio((s) => s.root);
+  const keys = useStudio((s) => s.keys);
+  const reuseKeys = useStudio((s) => s.reuseKeys);
+  const network = useStudio((s) => s.network);
+  const [busy, setBusy] = useState(false);
+
+  const compiled = root ? compileDescriptor(root, keys, reuseKeys) : null;
+  const ready = status === "ready";
+  const errText = error ? localizeMessage(locale, error) : null;
+  const port = defaultRpcPort(network);
+  const startos = kind === "startos" || looksLikeStartos(url);
+  const ipWarn = startos && isLanIpUrl(url);
+  const nodeUrl = normalizeRpcUrl(url, network);
+
+  useEffect(() => {
+    if (bridge !== "needed") return;
+    return watchBridge(originOf(nodeUrl), { user: username, pass: password }, () => {
+      void finishBridge();
+    });
+  }, [bridge, nodeUrl, username, password, finishBridge]);
+
+  async function run(fn: () => Promise<void>) {
+    setBusy(true);
+    try {
+      await fn();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <DialogContent className="max-h-[min(720px,calc(100dvh-2rem))] w-[min(520px,calc(100vw-1.5rem))] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle>{t("node.title")}</DialogTitle>
+        <DialogDescription>{t("node.blurb")}</DialogDescription>
+      </DialogHeader>
+
+      <div className="space-y-3">
+        <div>
+          <Label htmlFor="node-url">{t("node.url")}</Label>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => patch({ kind: "core", url: url.includes(".local") ? "127.0.0.1" : url })}
+              className={`h-8 rounded-full px-3 text-xs ${
+                !startos ? "bg-muted text-fg" : "border border-border text-fg-muted hover:text-fg"
+              }`}
+            >
+              Bitcoin Core
+            </button>
+            <button
+              type="button"
+              onClick={() => patch({ kind: "startos", url: looksLikeStartos(url) ? url : "" })}
+              className={`h-8 rounded-full px-3 text-xs ${
+                startos ? "bg-muted text-fg" : "border border-border text-fg-muted hover:text-fg"
+              }`}
+            >
+              StartOS
+            </button>
+            {!startos ? (
+              <button
+                type="button"
+                onClick={() => patch({ url: "127.0.0.1", kind: "core" })}
+                className={`h-8 rounded-full px-3 text-xs ${
+                  url === "127.0.0.1" || url.startsWith("127.0.0.1:")
+                    ? "bg-muted text-fg"
+                    : "border border-border text-fg-muted hover:text-fg"
+                }`}
+              >
+                {t("node.thisDevice")}
+              </button>
+            ) : null}
+          </div>
+          <Input
+            id="node-url"
+            value={url}
+            onChange={(e) => {
+              const next = e.target.value;
+              patch({
+                url: next,
+                kind: looksLikeStartos(next) ? "startos" : kind,
+              });
+            }}
+            placeholder={
+              startos
+                ? "https://name.local:57521"
+                : `192.168.178.20  ·  Port ${port}`
+            }
+            className="mt-1.5 font-mono text-xs"
+          />
+          <p className="mt-1 text-2xs text-fg-subtle">
+            {startos ? t("node.startos.portHint") : t("node.portHint", { port })}
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label htmlFor="node-user">{t("node.user")}</Label>
+            <Input
+              id="node-user"
+              value={username}
+              onChange={(e) => patch({ username: e.target.value })}
+              placeholder={startos ? "scriptwerk" : "__cookie__"}
+              className="mt-1.5 font-mono text-xs"
+            />
+          </div>
+          <div>
+            <Label htmlFor="node-pass">{t("node.pass")}</Label>
+            <Input
+              id="node-pass"
+              type="password"
+              value={password}
+              onChange={(e) => patch({ password: e.target.value })}
+              className="mt-1.5 font-mono text-xs"
+            />
+          </div>
+        </div>
+        <p className="text-2xs text-pretty text-fg-muted">
+          {startos ? t("node.startos.help") : t("node.lanHelp")}
+        </p>
+        {ipWarn ? <p className="text-2xs text-pretty text-warn">{t("node.startos.ipWarn")}</p> : null}
+
+        <div className="flex flex-wrap gap-2">
+          {ready ? (
+            <Button variant="outline" onClick={disconnect}>
+              {t("node.disconnect")}
+            </Button>
+          ) : (
+            <>
+              <Button disabled={busy} onClick={() => void run(() => connectLive(network))}>
+                {t("node.connect")}
+              </Button>
+              <Button variant="outline" disabled={busy} onClick={connectDemo}>
+                {t("node.demo")}
+              </Button>
+            </>
+          )}
+          <Button
+            variant="secondary"
+            disabled={busy || !ready || !compiled?.ok}
+            onClick={() =>
+              void run(async () => {
+                if (!compiled?.ok) {
+                  toast.error(compiled?.error ?? t("node.err.empty"));
+                  return;
+                }
+                await validate(compiled.descriptor, network);
+                const st = useBitcoind.getState();
+                if (st.error) toast.error(localizeMessage(locale, st.error));
+                else toast.success(t("node.checkOk"));
+              })
+            }
+          >
+            {t("node.check")}
+          </Button>
+        </div>
+
+        {ready && probe ? (
+          <p className="text-xs text-fg-muted">
+            {demo ? t("node.demoOn") : probe.subversion || t("node.connected")}
+            {probe.chain && probe.chain !== "demo" ? ` · ${probe.chain}` : ""}
+            {probe.blocks ? ` · ${probe.blocks} Bl.` : ""}
+          </p>
+        ) : null}
+        {errText && !trace ? <p className="text-xs text-danger">{errText}</p> : null}
+        {error === "node.err.blocked" || error === "node.err.cors" || trace?.steps.some((s) => s.status === "fail") ? (
+          <Button variant="outline" size="sm" onClick={() => openNodeTab(nodeUrl)}>
+            {t("node.openCert")}
+          </Button>
+        ) : null}
+        {bridge === "needed" || bridge === "on" ? <BridgePanel nodeUrl={nodeUrl} /> : null}
+        {trace ? <TracePanel /> : null}
+        {lastCheck ? <CheckResult /> : null}
+      </div>
+    </DialogContent>
+  );
+}
+
+export function NodeCheckCard() {
+  const { t, locale } = useT();
+  const status = useBitcoind((s) => s.status);
+  const lastCheck = useBitcoind((s) => s.lastCheck);
+  const error = useBitcoind((s) => s.error);
+  const validate = useBitcoind((s) => s.validate);
+  const setOpen = useBitcoind((s) => s.setOpen);
+  const demo = useBitcoind((s) => s.demo);
+  const network = useStudio((s) => s.network);
+  const root = useStudio((s) => s.root);
+  const keys = useStudio((s) => s.keys);
+  const reuseKeys = useStudio((s) => s.reuseKeys);
+  const compiled = root ? compileDescriptor(root, keys, reuseKeys) : null;
+  const ready = status === "ready";
+
+  return (
+    <section className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("node.checkTitle")}</h2>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8"
+          disabled={!compiled?.ok}
+          onClick={() => {
+            if (!ready) {
+              setOpen(true);
+              return;
+            }
+            if (compiled?.ok) void validate(compiled.descriptor, network);
+          }}
+        >
+          {ready ? t("node.check") : t("node.open")}
+        </Button>
+      </div>
+      <p className="text-xs text-fg-muted">
+        {ready ? (demo ? t("node.demoOn") : t("node.connected")) : t("node.needConn")}
+      </p>
+      {error ? <p className="text-xs text-danger">{localizeMessage(locale, error)}</p> : null}
+      {lastCheck ? <CheckResult /> : null}
+    </section>
+  );
+}
+
+function BridgePanel({ nodeUrl }: { nodeUrl: string }) {
+  const { t } = useT();
+  const bridge = useBitcoind((s) => s.bridge);
+  const origin = typeof location !== "undefined" ? location.origin : "";
+  const href = bookmarkletHref(origin);
+  const script = bridgeScript(origin);
+  return (
+    <div className="space-y-2 rounded-lg border border-border bg-surface px-3 py-2">
+      <p className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("node.bridge.title")}</p>
+      <p className="text-xs text-pretty text-fg-muted">
+        {bridge === "on" ? t("node.bridge.on") : t("node.bridge.help")}
+      </p>
+      {bridge !== "on" ? <p className="text-xs text-pretty text-fg">{t("node.bridge.postOnly")}</p> : null}
+      {bridge === "needed" ? (
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" onClick={() => openNodeTab(nodeUrl)}>
+            {t("node.bridge.openTab")}
+          </Button>
+          <a
+            href={href}
+            className="inline-flex h-9 items-center rounded-md border border-border px-3 text-xs hover:bg-muted"
+            onClick={(e) => {
+              e.preventDefault();
+              toast.message(t("node.bridge.drag"));
+            }}
+          >
+            {t("node.bridge.bookmark")}
+          </a>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              void navigator.clipboard.writeText(script).then(
+                () => toast.success(t("node.bridge.copied")),
+                () => toast.message(t("node.bridge.console")),
+              );
+            }}
+          >
+            {t("node.bridge.copy")}
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function stepDot(status: DiagStatus): string {
+  if (status === "ok") return "bg-ok";
+  if (status === "fail") return "bg-danger";
+  if (status === "warn") return "bg-warn";
+  return "bg-fg-subtle";
+}
+
+function TracePanel() {
+  const { t } = useT();
+  const trace = useBitcoind((s) => s.trace);
+  if (!trace) return null;
+  return (
+    <div className="rounded-lg border border-border bg-surface px-3 py-2">
+      <p className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("node.diag.title")}</p>
+      <p className="mt-1 font-mono text-2xs break-all text-fg-muted">
+        {t("node.diag.origin")}: {trace.origin || "—"}
+      </p>
+      <p className="font-mono text-2xs break-all text-fg-muted">
+        {t("node.diag.target")}: {trace.url}
+      </p>
+      <ol className="mt-2 space-y-1.5">
+        {trace.steps.map((step) => (
+          <li key={step.id} className="flex items-start gap-2 text-xs">
+            <span className={`mt-1 size-1.5 shrink-0 rounded-full ${stepDot(step.status)}`} aria-hidden />
+            <span className="min-w-0">
+              <span className="text-fg">{t(`node.diag.${step.id}`)}</span>
+              <span className="mt-0.5 block font-mono text-2xs break-all text-fg-muted">{step.detail}</span>
+            </span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+function CheckResult() {
+  const { t } = useT();
+  const lastCheck = useBitcoind((s) => s.lastCheck);
+  if (!lastCheck) return null;
+  return (
+    <div className="rounded-lg border border-border bg-surface px-3 py-2 text-xs">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Badge variant={lastCheck.issolvable ? "ok" : "warn"}>
+          {lastCheck.issolvable ? t("node.solvable") : t("node.unsolvable")}
+        </Badge>
+        {lastCheck.isrange ? <Badge>{t("node.range")}</Badge> : null}
+        <Badge variant="default">{lastCheck.source === "core" ? t("node.sourceCore") : t("node.sourceDemo")}</Badge>
+      </div>
+      <p className="mt-1.5 font-mono text-2xs break-all text-fg-muted">#{lastCheck.checksum}</p>
+      {lastCheck.addresses.length ? (
+        <ul className="mt-2 space-y-0.5 font-mono text-2xs break-all text-fg-subtle">
+          {lastCheck.addresses.map((a) => (
+            <li key={a}>{a}</li>
+          ))}
+        </ul>
+      ) : null}
+      {lastCheck.deriveError ? (
+        <p className="mt-1 text-fg-muted">
+          {t("node.deriveSkip")}: {lastCheck.deriveError}
+        </p>
+      ) : null}
+    </div>
+  );
+}

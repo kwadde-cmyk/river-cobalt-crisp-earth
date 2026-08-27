@@ -1,4 +1,4 @@
-import { DELAY_PRESETS, defaultStages, nextStageDelay, type Stage } from "@/lib/miniscript/stages";
+import { DELAY_PRESETS, defaultStages, nextStageDelay, stageFormula, type Stage } from "@/lib/miniscript/stages";
 import { blocksWhen, keyIsFilled, nextKeyName, type KeyEntry } from "@/lib/miniscript/keys";
 import { uid } from "@/lib/utils";
 import { useStudio } from "@/store/studio";
@@ -14,6 +14,8 @@ export function StageBuilder() {
   const stages = useStudio((s) => s.stages);
   const keys = useStudio((s) => s.keys);
   const setStages = useStudio((s) => s.setStages);
+  const selectedStageId = useStudio((s) => s.selectedStageId);
+  const selectStage = useStudio((s) => s.selectStage);
 
   const pool = keys.map((k) => k.name);
 
@@ -64,6 +66,8 @@ export function StageBuilder() {
                 pool={pool}
                 entries={keys}
                 canRemove={stages.length > 1}
+                selected={selectedStageId === s.id}
+                onSelect={() => selectStage(s.id)}
                 onChange={(next) => patch(s.id, () => next)}
                 onRemove={() => setStages(stages.filter((x) => x.id !== s.id))}
               />
@@ -83,6 +87,8 @@ function StageCard({
   pool,
   entries,
   canRemove,
+  selected,
+  onSelect,
   onChange,
   onRemove,
 }: {
@@ -91,6 +97,8 @@ function StageCard({
   pool: string[];
   entries: KeyEntry[];
   canRemove: boolean;
+  selected: boolean;
+  onSelect: () => void;
   onChange: (s: Stage) => void;
   onRemove: () => void;
 }) {
@@ -116,24 +124,50 @@ function StageCard({
     const has = stage.keys.includes(name);
     const keys = has ? stage.keys.filter((x) => x !== name) : [...stage.keys, name];
     if (!keys.length) return;
-    onChange({ ...stage, keys, k: Math.min(k, keys.length) });
+    const required = (stage.required ?? []).filter((k) => keys.includes(k));
+    onChange({
+      ...stage,
+      keys,
+      k: Math.min(k, keys.length),
+      required: required.length ? required : undefined,
+    });
   }
 
   return (
-    <article className="rounded-xl border border-border bg-surface p-2.5">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <p className="text-sm font-medium">
-          {t("stages.n", { n: index + 1 })}
-          <span className="ml-2 text-xs font-normal text-fg-muted">{blocksWhen(stage.delay, locale)}</span>
-        </p>
+    <article
+      data-stage-id={stage.id}
+      className={`rounded-xl border p-2.5 ${
+        selected ? "border-primary bg-primary/15 ring-1 ring-primary" : "border-border bg-surface"
+      }`}
+    >
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <button
+          type="button"
+          aria-pressed={selected}
+          onClick={onSelect}
+          className="min-w-0 flex-1 rounded-lg px-0.5 py-0.5 text-left hover:bg-muted/40"
+        >
+          <span className="block text-sm font-medium">
+            {t("stages.n", { n: index + 1 })}
+            <span className="ml-2 text-xs font-normal text-fg-muted">{blocksWhen(stage.delay, locale)}</span>
+          </span>
+          <span className="mt-1 block font-mono text-2xs text-fg-muted">{stageFormula(stage)}</span>
+        </button>
         {canRemove ? (
-          <Button variant="ghost" size="icon" className="size-9" onClick={onRemove} aria-label={t("stages.remove")}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-9 shrink-0"
+            type="button"
+            onClick={onRemove}
+            aria-label={t("stages.remove")}
+          >
             <Trash2 />
           </Button>
         ) : null}
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3" onClick={(e) => e.stopPropagation()}>
         <Stepper label={t("stages.keys")} value={n} min={1} max={15} onChange={setN} />
         <Stepper
           label={t("stages.threshold")}
@@ -144,7 +178,7 @@ function StageCard({
         />
       </div>
 
-      <div className="mt-3">
+      <div className="mt-3" onClick={(e) => e.stopPropagation()}>
         <Label>{t("stages.inStage")}</Label>
         <div className="mt-1.5 flex flex-wrap gap-1.5">
           {Array.from(new Set([...pool, ...stage.keys])).map((name) => {
@@ -158,11 +192,16 @@ function StageCard({
                 onClick={() => toggleKey(name)}
                 className={
                   on
-                    ? "h-9 rounded-full bg-primary px-3 font-mono text-xs text-primary-foreground"
+                    ? stage.required?.includes(name)
+                      ? "h-9 rounded-full bg-primary px-3 font-mono text-xs text-primary-foreground ring-1 ring-primary"
+                      : "h-9 rounded-full bg-primary px-3 font-mono text-xs text-primary-foreground"
                     : "h-9 rounded-full border border-border px-3 font-mono text-xs text-fg-muted hover:bg-muted hover:text-fg"
                 }
               >
                 {name}
+                {stage.required?.includes(name) ? (
+                  <span className="ml-1 text-[10px] opacity-80">{t("stages.must")}</span>
+                ) : null}
                 {filled ? <span className="ml-1.5 inline-block size-1.5 rounded-full bg-current opacity-80" /> : null}
               </button>
             );
@@ -177,7 +216,7 @@ function StageCard({
         </div>
       </div>
 
-      <div className="mt-3">
+      <div className="mt-3" onClick={(e) => e.stopPropagation()}>
         <Label htmlFor={`delay-${stage.id}`}>{t("stages.timelock")}</Label>
         <Input
           id={`delay-${stage.id}`}

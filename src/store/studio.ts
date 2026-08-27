@@ -1,11 +1,13 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import type { MsNode, WrapCode } from "@/lib/miniscript/ast";
-import { coreOf, findNode, hole, mapNode } from "@/lib/miniscript/ast";
+import { coreOf, findNode, hole, mapKeyStrings, mapNode } from "@/lib/miniscript/ast";
 import {
   applyKeyMaterial,
+  collapseAliasKeys,
   emptyKey,
   extractKeysFromTree,
+  groupKeysByFingerprint,
   nextKeyName,
   normalizeKeyEntry,
   parseChildKey,
@@ -14,25 +16,53 @@ import {
 } from "@/lib/miniscript/keys";
 import { buildOperator, wrapNode, type BuildParams } from "@/lib/miniscript/operators";
 import { parseAny } from "@/lib/miniscript/parser";
-import { compileStages, defaultStages, isDerivedAlias, type Stage } from "@/lib/miniscript/stages";
+import { compileStages, defaultStages, inferStages, isDerivedAlias, type Stage } from "@/lib/miniscript/stages";
 import { materializeWalletPolicy, parseWalletPolicy } from "@/lib/miniscript/bip388";
 import { isLocale, localizeMessage, t, type Locale } from "@/lib/i18n";
 
-export type { KeyEntry, Stage };
+type Snapshot = {
+  keys: KeyEntry[];
+  root: MsNode | null;
+  stages: Stage[];
+  selectedId: string | null;
+  selectedStageId: string | null;
+  network: "mainnet" | "testnet";
+  reuseKeys: boolean;
+};
+
+function snapOf(s: Snapshot): Snapshot {
+  return structuredClone({
+    keys: s.keys,
+    root: s.root,
+    stages: s.stages,
+    selectedId: s.selectedId,
+    selectedStageId: s.selectedStageId,
+    network: s.network,
+    reuseKeys: s.reuseKeys,
+  });
+}
+
+const HISTORY = 60;
 
 interface StudioState {
   keys: KeyEntry[];
   root: MsNode | null;
   stages: Stage[];
   selectedId: string | null;
+  selectedStageId: string | null;
   network: "mainnet" | "testnet";
   reuseKeys: boolean;
   locale: Locale;
   importError: string | null;
+  past: Snapshot[];
+  future: Snapshot[];
   setNetwork: (n: "mainnet" | "testnet") => void;
   setReuseKeys: (v: boolean) => void;
   setLocale: (locale: Locale) => void;
   select: (id: string | null) => void;
+  selectStage: (id: string | null) => void;
+  undo: () => void;
+  redo: () => void;
   setRoot: (node: MsNode | null) => void;
   setStages: (stages: Stage[]) => void;
   applyOperator: (opId: string, params: BuildParams) => void;
@@ -49,6 +79,23 @@ interface StudioState {
   importKeyText: (id: string, text: string) => string | null;
   importChildText: (id: string, text: string, opts?: { fallbackPath?: string; alias?: string }) => string | null;
   reset: () => void;
+}
+
+function adoptImportedTree(node: MsNode, keys: KeyEntry[]) {
+  const grouped = groupKeysByFingerprint(keys);
+  const renamed = grouped.rename.size
+    ? mapKeyStrings(node, (tok) => grouped.rename.get(tok) ?? tok)
+    : node;
+  const stages = inferStages(renamed);
+  const masters = stages.flatMap((s) => s.keys);
+  const folded = masters.length ? collapseAliasKeys(grouped.keys, masters) : grouped.keys;
+  return {
+    root: renamed,
+    selectedId: renamed.id,
+    keys: folded,
+    stages,
+    importError: null as string | null,
+  };
 }
 
 function insertInto(root: MsNode | null, selectedId: string | null, next: MsNode): MsNode {
@@ -148,6 +195,27 @@ function applyStageTree(
   };
 }
 
+function debounceStorage(inner: { getItem: (n: string) => string | null; setItem: (n: string, v: string) => void; removeItem: (n: string) => void }, ms: number) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let pending: { name: string; value: string } | undefined;
+  return {
+    getItem: (name: string) => inner.getItem(name),
+    setItem: (name: string, value: string) => {
+      pending = { name, value };
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (pending) inner.setItem(pending.name, pending.value);
+        pending = undefined;
+      }, ms);
+    },
+    removeItem: (name: string) => {
+      if (timer) clearTimeout(timer);
+      pending = undefined;
+      inner.removeItem(name);
+    },
+  };
+}
+
 const memoryStorage = {
   getItem: () => null,
   setItem: () => {},
@@ -156,19 +224,37 @@ const memoryStorage = {
 
 export const useStudio = create<StudioState>()(
   persist(
-    (set, get) => ({
-      keys: [emptyKey("A"), emptyKey("B"), emptyKey("C")],
-      root: null,
-      stages: [],
-      selectedId: null,
+    (set, get) => {
+      const mutate = (patch: Partial<StudioState>) => {
+        const cur = get();
+        set({
+          ...patch,
+          past: [...cur.past, snapOf(cur)].slice(-HISTORY),
+          future: [],
+        });
+      };
+      const boot = applyStageTree(
+        defaultStages(),
+        [emptyKey("A"), emptyKey("B"), emptyKey("C")],
+        "mainnet",
+        false,
+      );
+      return {
+      keys: boot.keys,
+      root: boot.root,
+      stages: boot.stages,
+      selectedId: boot.selectedId,
+      selectedStageId: null,
       network: "mainnet",
-      reuseKeys: true,
+      reuseKeys: false,
       locale: "de",
       importError: null,
+      past: [],
+      future: [],
       setNetwork: (network) => {
         const nextPath = network === "testnet" ? "48'/1'/0'/2'" : "48'/0'/0'/2'";
         const prevPath = network === "testnet" ? "48'/0'/0'/2'" : "48'/1'/0'/2'";
-        set({
+        mutate({
           network,
           keys: get().keys.map((k) =>
             !k.xpub && (!k.derivation || k.derivation === prevPath)
@@ -180,19 +266,54 @@ export const useStudio = create<StudioState>()(
       setReuseKeys: (reuseKeys) => {
         const { stages, keys, network } = get();
         if (stages.length) {
-          set({ reuseKeys, ...applyStageTree(stages, keys, network, reuseKeys) });
+          mutate({ reuseKeys, ...applyStageTree(stages, keys, network, reuseKeys) });
           return;
         }
-        set({ reuseKeys });
+        mutate({ reuseKeys });
       },
       setLocale: (locale) => set({ locale: isLocale(locale) ? locale : "de" }),
-      select: (selectedId) => set({ selectedId }),
-      setRoot: (root) => set({ root, selectedId: root?.id ?? null }),
-      setStages: (stages) => set(applyStageTree(stages, get().keys, get().network, get().reuseKeys)),
+      select: (selectedId) => set({ selectedId, selectedStageId: null }),
+      selectStage: (id) =>
+        set({
+          selectedStageId: get().selectedStageId === id ? null : id,
+          selectedId: get().selectedStageId === id ? get().selectedId : null,
+        }),
+      undo: () => {
+        const cur = get();
+        if (!cur.past.length) return;
+        const prev = cur.past[cur.past.length - 1]!;
+        set({
+          ...prev,
+          past: cur.past.slice(0, -1),
+          future: [...cur.future, snapOf(cur)],
+          importError: null,
+        });
+      },
+      redo: () => {
+        const cur = get();
+        if (!cur.future.length) return;
+        const next = cur.future[cur.future.length - 1]!;
+        set({
+          ...next,
+          future: cur.future.slice(0, -1),
+          past: [...cur.past, snapOf(cur)],
+          importError: null,
+        });
+      },
+      setRoot: (root) => mutate({ root, selectedId: root?.id ?? null }),
+      setStages: (stages) => {
+        const cur = get();
+        const next = applyStageTree(stages, cur.keys, cur.network, cur.reuseKeys);
+        mutate({
+          ...next,
+          selectedId: cur.selectedStageId ? null : (next.root?.id ?? null),
+          selectedStageId: cur.selectedStageId,
+        });
+      },
       applyOperator: (opId, params) => {
         const node = buildOperator(opId, params);
         const { root, selectedId } = get();
-        set({
+        mutate({
           root: insertInto(root, selectedId, node),
           selectedId: node.id,
           importError: null,
@@ -205,7 +326,7 @@ export const useStudio = create<StudioState>()(
         const target = findNode(root, selectedId);
         if (!target) return;
         const wrapped = wrapNode(target, wrap);
-        set({
+        mutate({
           root: mapNode(root, selectedId, () => wrapped),
           selectedId: wrapped.id,
           stages: [],
@@ -217,24 +338,24 @@ export const useStudio = create<StudioState>()(
         const target = findNode(root, selectedId);
         if (!target) return;
         if (target.kind === "wrap") {
-          set({
+          mutate({
             root: mapNode(root, selectedId, () => target.child),
             selectedId: target.child.id,
             stages: [],
           });
           return;
         }
-        set({ root: unwrapOneAround(root, selectedId), stages: [] });
+        mutate({ root: unwrapOneAround(root, selectedId), stages: [] });
       },
       deleteSelected: () => {
         const { root, selectedId } = get();
         if (!root || !selectedId) return;
         if (root.id === selectedId) {
-          set({ root: null, selectedId: null, stages: [] });
+          mutate({ root: null, selectedId: null, stages: [] });
           return;
         }
         const nextHole = hole();
-        set({
+        mutate({
           root: mapNode(root, selectedId, () => nextHole),
           selectedId: nextHole.id,
           stages: [],
@@ -243,24 +364,24 @@ export const useStudio = create<StudioState>()(
       patchNode: (id, patch) => {
         const { root } = get();
         if (!root) return;
-        set({
+        mutate({
           root: mapNode(root, id, (n) => ({ ...n, ...patch }) as MsNode),
           stages: [],
         });
       },
       addKey: () => {
         const names = get().keys.map((k) => k.name);
-        set({ keys: [...get().keys, emptyKey(nextKeyName(names), get().network)] });
+        mutate({ keys: [...get().keys, emptyKey(nextKeyName(names), get().network)] });
       },
       updateKey: (id, patch) => {
-        set({ keys: get().keys.map((k) => (k.id === id ? { ...k, ...patch } : k)) });
+        mutate({ keys: get().keys.map((k) => (k.id === id ? { ...k, ...patch } : k)) });
       },
       removeKey: (id) => {
         const { keys, stages, reuseKeys } = get();
         const removed = keys.find((k) => k.id === id);
         const nextKeys = keys.filter((k) => k.id !== id);
         if (!removed || !stages.length) {
-          set({ keys: nextKeys });
+          mutate({ keys: nextKeys });
           return;
         }
         const nextStages = stages
@@ -269,7 +390,7 @@ export const useStudio = create<StudioState>()(
             return { ...s, keys: names, k: Math.min(s.k, Math.max(names.length, 1)) };
           })
           .filter((s) => s.keys.length);
-        set(
+        mutate(
           applyStageTree(
             nextStages.length ? nextStages : defaultStages(),
             nextKeys,
@@ -279,7 +400,7 @@ export const useStudio = create<StudioState>()(
         );
       },
       removeChild: (keyId, childId) => {
-        set({
+        mutate({
           keys: get().keys.map((k) => {
             if (k.id !== keyId) return k;
             const cur = normalizeKeyEntry(k);
@@ -292,13 +413,7 @@ export const useStudio = create<StudioState>()(
         if (wallet) {
           try {
             const extracted = materializeWalletPolicy(wallet, get().keys);
-            set({
-              root: extracted.node,
-              selectedId: extracted.node.id,
-              keys: extracted.keys,
-              stages: [],
-              importError: null,
-            });
+            mutate(adoptImportedTree(extracted.node, extracted.keys));
           } catch (e) {
             set({
               importError: e instanceof Error ? e.message : t(get().locale, "import.fail"),
@@ -308,19 +423,13 @@ export const useStudio = create<StudioState>()(
         }
         const keyList = parseKeyList(text);
         if (keyList) {
-          set({ keys: mergeKeyLists(get().keys, keyList), importError: null });
+          mutate({ keys: mergeKeyLists(get().keys, keyList), importError: null });
           return;
         }
         try {
           const parsed = parseAny(text);
           const extracted = extractKeysFromTree(parsed.node, get().keys);
-          set({
-            root: extracted.node,
-            selectedId: extracted.node.id,
-            keys: extracted.keys,
-            stages: [],
-            importError: null,
-          });
+          mutate(adoptImportedTree(extracted.node, extracted.keys));
         } catch (e) {
           set({
             importError: e instanceof Error ? e.message : t(get().locale, "import.fail"),
@@ -333,14 +442,14 @@ export const useStudio = create<StudioState>()(
           set({ importError: t(get().locale, "import.noXpubs") });
           return;
         }
-        set({ keys: mergeKeyLists(get().keys, keyList), importError: null });
+        mutate({ keys: mergeKeyLists(get().keys, keyList), importError: null });
       },
       importKeyText: (id, text) => {
         const target = get().keys.find((k) => k.id === id);
         if (!target) return t(get().locale, "err.noKey");
         const result = applyKeyMaterial(target, text);
         if (!result.ok) return localizeMessage(get().locale, result.error);
-        set({
+        mutate({
           keys: get().keys.map((k) => (k.id === id ? result.key : k)),
           importError: null,
         });
@@ -354,7 +463,7 @@ export const useStudio = create<StudioState>()(
         if (target.children?.some((c) => c.path === parsed.child.path)) {
           return t(get().locale, "err.dupChild");
         }
-        set({
+        mutate({
           keys: get().keys.map((k) =>
             k.id === id
               ? normalizeKeyEntry({ ...k, children: [...(k.children ?? []), parsed.child] })
@@ -363,13 +472,19 @@ export const useStudio = create<StudioState>()(
         });
         return null;
       },
-      reset: () => set(applyStageTree(defaultStages(), [], get().network, get().reuseKeys)),
-    }),
+      reset: () => mutate(applyStageTree(defaultStages(), [], get().network, get().reuseKeys)),
+    };
+    },
     {
-      name: "scriptwerk-studio-v2",
-      storage: createJSONStorage(() =>
-        typeof window === "undefined" ? memoryStorage : localStorage,
-      ),
+      name: "scriptwerk-studio-v3",
+      storage: createJSONStorage(() => {
+        try {
+          if (typeof window === "undefined") return memoryStorage;
+          return debounceStorage(localStorage, 400);
+        } catch {
+          return memoryStorage;
+        }
+      }),
       partialize: (s) => ({
         keys: s.keys,
         root: s.root,

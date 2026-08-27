@@ -1,8 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { InterpreterPanel } from "@/components/interpreter-panel";
 import { ImportExportBar } from "@/components/import-export";
 import { KeyDatalist, OperatorPalette } from "@/components/operator-palette";
 import { NodeInspector } from "@/components/node-inspector";
+import { KeyBoard } from "@/components/key-board";
 import { PolicyGraph } from "@/components/policy-graph";
 import { StageBuilder } from "@/components/stage-builder";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -17,18 +18,46 @@ export function StudioShell() {
   const { t, locale, setLocale } = useT();
 
   useEffect(() => {
+    const unlock = () => {
+      document.body.style.pointerEvents = "";
+      document.body.removeAttribute("data-scroll-locked");
+    };
+    unlock();
+    window.addEventListener("pointerdown", unlock, true);
+    return () => window.removeEventListener("pointerdown", unlock, true);
+  }, []);
+
+  useEffect(() => {
     void Promise.resolve(useStudio.persist.rehydrate()).then(() => {
       const s = useStudio.getState();
-      if (s.stages?.length) {
-        s.setStages(s.stages);
-        return;
-      }
       if (s.root) {
-        useStudio.setState({ stages: [] });
+        useStudio.setState({ past: [], future: [] });
         return;
       }
-      s.setStages(defaultStages());
+      if (s.stages?.length) s.setStages(s.stages);
+      else s.setStages(defaultStages());
+      useStudio.setState({ past: [], future: [] });
     });
+  }, []);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      if (e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        useStudio.getState().undo();
+        return;
+      }
+      if ((e.key === "z" && e.shiftKey) || e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        useStudio.getState().redo();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   useEffect(() => {
@@ -40,18 +69,27 @@ export function StudioShell() {
       <KeyDatalist />
       <Toaster theme="dark" position="bottom-center" />
       <div className="flex h-dvh flex-col overflow-hidden bg-bg text-fg">
-        <header className="shrink-0 border-b border-border px-3 py-1.5 md:px-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="shrink-0 leading-none">
-              <p className="text-2xs font-medium tracking-[0.18em] text-fg-muted uppercase">Mini –</p>
-              <h1 className="font-display text-lg tracking-tight">Scriptwerk</h1>
+        <header className="relative z-30 shrink-0 border-b border-border" style={{ touchAction: "manipulation" }}>
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-stretch">
+            <div className="min-w-0 flex-1 overflow-hidden px-2 pt-3 lg:px-3">
+              <img
+                src="/miniscript-banner.jpg?v=3"
+                alt=""
+                className="h-16 w-auto max-w-full object-contain object-left md:h-28 lg:h-40"
+              />
+              <h1 className="sr-only">Miniscript Studio</h1>
             </div>
-            <ImportExportBar />
-            <LangSwitch locale={locale} setLocale={setLocale} label={t("header.language")} />
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 px-3 pb-2 lg:max-w-lg lg:items-end lg:py-2.5">
+              <ImportExportBar />
+              <LangSwitch locale={locale} setLocale={setLocale} label={t("header.language")} />
+            </div>
           </div>
         </header>
 
-        <div className="hidden min-h-0 flex-1 overflow-hidden lg:flex">
+        <MountWhenVisible
+          dataLayout="desktop"
+          className="hidden min-h-0 flex-1 overflow-hidden lg:flex"
+        >
           <aside className="flex w-[300px] shrink-0 flex-col overflow-hidden border-r border-border">
             <Tabs defaultValue="stages" className="flex min-h-0 flex-1 flex-col">
               <TabsList className="mx-3 mt-3 shrink-0">
@@ -81,45 +119,102 @@ export function StudioShell() {
               </TabsContent>
             </Tabs>
           </aside>
-          <main className="min-w-0 flex-1 overflow-hidden bg-ink">
-            <PolicyGraph />
+          <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-ink">
+            <KeyBoard />
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <PolicyGraph />
+            </div>
           </main>
           <aside className="flex w-[340px] shrink-0 flex-col overflow-hidden border-l border-border">
             <div className="min-h-0 flex-1 overflow-hidden">
               <InterpreterPanel />
             </div>
           </aside>
-        </div>
+        </MountWhenVisible>
 
-        <div className="min-h-0 flex-1 overflow-hidden lg:hidden">
-          <Tabs defaultValue="tree" className="flex h-full flex-col px-3 py-3">
-            <TabsList className="w-full shrink-0">
-              <TabsTrigger value="stages" className="flex-1">
-                {t("tabs.stages")}
-              </TabsTrigger>
-              <TabsTrigger value="tree" className="flex-1">
-                {t("tabs.tree")}
-              </TabsTrigger>
-              <TabsTrigger value="read" className="flex-1">
-                {t("tabs.read")}
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="stages" className="min-h-0 flex-1 overflow-hidden">
-              <StageBuilder />
-            </TabsContent>
-            <TabsContent
-              value="tree"
-              className="min-h-0 flex-1 overflow-hidden rounded-xl border border-border"
-            >
-              <PolicyGraph />
-            </TabsContent>
-            <TabsContent value="read" className="min-h-0 flex-1 overflow-hidden">
-              <InterpreterPanel />
-            </TabsContent>
-          </Tabs>
-        </div>
+        <MountWhenVisible
+          dataLayout="mobile"
+          className="flex min-h-0 flex-1 overflow-hidden lg:hidden"
+        >
+          <MobileStudioTabs />
+        </MountWhenVisible>
       </div>
     </TooltipProvider>
+  );
+}
+
+function MobileStudioTabs() {
+  const { t } = useT();
+  const selectedStageId = useStudio((s) => s.selectedStageId);
+  const [tab, setTab] = useState("tree");
+  const prevStage = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (selectedStageId && selectedStageId !== prevStage.current) setTab("tree");
+    prevStage.current = selectedStageId;
+  }, [selectedStageId]);
+
+  return (
+    <Tabs value={tab} onValueChange={setTab} className="flex h-full flex-col px-3 py-3">
+      <TabsList className="relative z-10 w-full shrink-0" style={{ touchAction: "manipulation" }}>
+        <TabsTrigger value="stages" className="flex-1 px-2 text-xs">
+          {t("tabs.stages")}
+        </TabsTrigger>
+        <TabsTrigger value="tree" className="flex-1 px-2 text-xs">
+          {t("tabs.tree")}
+        </TabsTrigger>
+        <TabsTrigger value="keys" className="flex-1 px-2 text-xs">
+          {t("tabs.keys")}
+        </TabsTrigger>
+        <TabsTrigger value="read" className="flex-1 px-2 text-xs">
+          {t("tabs.read")}
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value="stages" className="mt-2 min-h-0 flex-1 overflow-hidden">
+        <StageBuilder />
+      </TabsContent>
+      <TabsContent
+        value="tree"
+        className="mt-2 min-h-0 flex-1 overflow-hidden rounded-xl border border-border"
+      >
+        <PolicyGraph />
+      </TabsContent>
+      <TabsContent value="keys" className="mt-2 min-h-0 flex-1 overflow-hidden">
+        <KeyBoard fill />
+      </TabsContent>
+      <TabsContent value="read" className="mt-2 min-h-0 flex-1 overflow-hidden">
+        <InterpreterPanel />
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+function MountWhenVisible({
+  className,
+  dataLayout,
+  children,
+}: {
+  className?: string;
+  dataLayout: "desktop" | "mobile";
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [show, setShow] = useState(true);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = () => {
+      setShow(getComputedStyle(el).display !== "none");
+    };
+    check();
+    const mq = window.matchMedia("(min-width: 1024px)");
+    mq.addEventListener("change", check);
+    return () => mq.removeEventListener("change", check);
+  }, []);
+  return (
+    <div ref={ref} data-layout={dataLayout} className={className}>
+      {show ? children : null}
+    </div>
   );
 }
 

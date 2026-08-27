@@ -1,9 +1,9 @@
 import { useMemo } from "react";
 import { layoutTree } from "@/lib/miniscript/layout";
 import { visit, type MsNode } from "@/lib/miniscript/ast";
-import { tokenNeedsAction, type KeyEntry } from "@/lib/miniscript/keys";
+import { blocksWhen, tokenNeedsAction, type KeyEntry } from "@/lib/miniscript/keys";
+import { stageHighlightIds } from "@/lib/miniscript/stages";
 import { useStudio } from "@/store/studio";
-import { KeyBoard } from "@/components/key-board";
 import { ZoomPane } from "@/components/zoom-pane";
 import { GitBranch } from "lucide-react";
 import { useT } from "@/lib/use-t";
@@ -27,19 +27,39 @@ export function PolicyGraph() {
   const { t, locale } = useT();
   const root = useStudio((s) => s.root);
   const keys = useStudio((s) => s.keys);
+  const stages = useStudio((s) => s.stages);
   const reuseKeys = useStudio((s) => s.reuseKeys);
   const selectedId = useStudio((s) => s.selectedId);
+  const selectedStageId = useStudio((s) => s.selectedStageId);
   const select = useStudio((s) => s.select);
   const layout = useMemo(() => layoutTree(root, locale), [root, locale]);
   const attention = useMemo(() => attentionIds(root, keys, reuseKeys), [root, keys, reuseKeys]);
+  const highlight = useMemo(
+    () => stageHighlightIds(root, stages, selectedStageId),
+    [root, stages, selectedStageId],
+  );
+  const stageIndex = selectedStageId ? stages.findIndex((s) => s.id === selectedStageId) : -1;
+  const activeStage = stageIndex >= 0 ? stages[stageIndex] : null;
   const selectedRect = useMemo(() => {
-    const b = layout.boxes.find((box) => box.id === selectedId);
-    return b ? { x: b.x, y: b.y, w: b.w, h: b.h } : null;
-  }, [layout.boxes, selectedId]);
+    const boxes = highlight.size
+      ? layout.boxes.filter((box) => highlight.has(box.id))
+      : layout.boxes.filter((box) => box.id === selectedId);
+    if (!boxes.length) return null;
+    const x = Math.min(...boxes.map((b) => b.x));
+    const y = Math.min(...boxes.map((b) => b.y));
+    const r = Math.max(...boxes.map((b) => b.x + b.w));
+    const btm = Math.max(...boxes.map((b) => b.y + b.h));
+    return { x, y, w: r - x, h: btm - y };
+  }, [layout.boxes, selectedId, highlight]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <KeyBoard />
+    <div className="relative flex h-full min-h-0 flex-col">
+      {activeStage ? (
+        <div className="pointer-events-none absolute top-3 left-3 z-10 rounded-full bg-primary px-3 py-1 font-mono text-2xs text-primary-foreground shadow-md">
+          {t("graph.stagePath", { n: stageIndex + 1 })}
+          <span className="ml-2 opacity-80">{blocksWhen(activeStage.delay, locale)}</span>
+        </div>
+      ) : null}
       {root ? (
         <ZoomPane
           contentWidth={Math.max(layout.width, 320)}
@@ -55,13 +75,15 @@ export function PolicyGraph() {
           >
             {layout.edges.map((e) => {
               const midY = (e.y1 + e.y2) / 2;
+              const hot = highlight.size > 0;
+              const on = !hot || (highlight.has(e.from) && highlight.has(e.to));
               return (
-                <g key={`${e.from}-${e.to}`}>
+                <g key={`${e.from}-${e.to}`} opacity={on ? 1 : 0.22}>
                   <path
                     d={`M ${e.x1} ${e.y1} L ${e.x1} ${midY} L ${e.x2} ${midY} L ${e.x2} ${e.y2}`}
                     fill="none"
-                    stroke="var(--color-border-strong)"
-                    strokeWidth={1.25}
+                    stroke={on && hot ? "var(--color-primary)" : "var(--color-border-strong)"}
+                    strokeWidth={on && hot ? 1.75 : 1.25}
                   />
                   {e.label ? (
                     <text
@@ -83,39 +105,53 @@ export function PolicyGraph() {
               const compact = b.h < 40;
               const timeish = b.kind === "older" || b.kind === "after";
               const needs = attention.has(b.id);
+              const hot = highlight.size > 0;
+              const lit = highlight.has(b.id);
               const fill = b.hole
                 ? "transparent"
-                : selected
-                  ? "var(--color-primary)"
-                  : needs
-                    ? "color-mix(in srgb, var(--color-danger) 16%, var(--color-elevated))"
-                    : "var(--color-elevated)";
-              const stroke = needs
-                ? "var(--color-danger)"
-                : b.hole
-                  ? "var(--color-fg-subtle)"
+                : lit
+                  ? "color-mix(in srgb, var(--color-primary) 38%, var(--color-elevated))"
                   : selected
                     ? "var(--color-primary)"
-                    : timeish
-                      ? "var(--color-warn)"
-                      : "var(--color-border-strong)";
+                    : needs
+                      ? "color-mix(in srgb, var(--color-danger) 16%, var(--color-elevated))"
+                      : "var(--color-elevated)";
+              const stroke = lit
+                ? "var(--color-primary)"
+                : needs
+                  ? "var(--color-danger)"
+                  : b.hole
+                    ? "var(--color-fg-subtle)"
+                    : selected
+                      ? "var(--color-primary)"
+                      : timeish
+                        ? "var(--color-warn)"
+                        : "var(--color-border-strong)";
               const titleFill =
-                selected && !b.hole ? "var(--color-primary-foreground)" : needs ? "var(--color-danger)" : "var(--color-fg)";
-              const subFill =
-                selected && !b.hole
+                selected && !lit && !b.hole
                   ? "var(--color-primary-foreground)"
-                  : needs
-                    ? "var(--color-danger)"
-                    : "var(--color-fg-muted)";
+                  : lit
+                    ? "var(--color-fg)"
+                    : needs
+                      ? "var(--color-danger)"
+                      : "var(--color-fg)";
+              const subFill =
+                selected && !lit && !b.hole
+                  ? "var(--color-primary-foreground)"
+                  : lit
+                    ? "var(--color-fg-muted)"
+                    : needs
+                      ? "var(--color-danger)"
+                      : "var(--color-fg-muted)";
               return (
-                <g key={b.id} transform={`translate(${b.x} ${b.y})`}>
+                <g key={b.id} transform={`translate(${b.x} ${b.y})`} opacity={!hot || lit ? 1 : 0.22}>
                   <rect
                     width={b.w}
                     height={b.h}
                     rx={compact ? 6 : 10}
                     fill={fill}
                     stroke={stroke}
-                    strokeWidth={needs || selected ? 1.75 : 1}
+                    strokeWidth={lit ? 2.4 : needs || selected ? 1.75 : 1}
                     strokeDasharray={b.hole ? "4 3" : undefined}
                     onClick={() => select(b.id)}
                     style={{ cursor: "pointer" }}

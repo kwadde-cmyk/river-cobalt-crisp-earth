@@ -89,13 +89,17 @@ export function QrScanner({ onRead, compact }: { onRead: (text: string) => void;
           if (stopped) return;
           const canvas = canvasRef.current;
           if (video && canvas && video.readyState >= 2) {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            const ctx = canvas.getContext("2d");
-            if (ctx && canvas.width && canvas.height) {
-              ctx.drawImage(video, 0, 0);
-              const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-              const code = jsQR(img.data, img.width, img.height);
+            const max = 480;
+            const scale = Math.min(1, max / Math.max(video.videoWidth, video.videoHeight));
+            const w = Math.max(1, Math.floor(video.videoWidth * scale));
+            const h = Math.max(1, Math.floor(video.videoHeight * scale));
+            if (canvas.width !== w) canvas.width = w;
+            if (canvas.height !== h) canvas.height = h;
+            const ctx = canvas.getContext("2d", { willReadFrequently: true });
+            if (ctx && w && h) {
+              ctx.drawImage(video, 0, 0, w, h);
+              const img = ctx.getImageData(0, 0, w, h);
+              const code = jsQR(img.data, img.width, img.height, { inversionAttempts: "dontInvert" });
               if (code?.data) {
                 onRead(code.data);
                 stopped = true;
@@ -103,7 +107,9 @@ export function QrScanner({ onRead, compact }: { onRead: (text: string) => void;
               }
             }
           }
-          raf = requestAnimationFrame(tick);
+          raf = window.setTimeout(() => {
+            raf = requestAnimationFrame(tick);
+          }, 80);
         };
         raf = requestAnimationFrame(tick);
       } catch {
@@ -115,6 +121,7 @@ export function QrScanner({ onRead, compact }: { onRead: (text: string) => void;
     void start();
     return () => {
       stopped = true;
+      clearTimeout(raf);
       cancelAnimationFrame(raf);
       stream?.getTracks().forEach((tr) => tr.stop());
     };
