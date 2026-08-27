@@ -62,6 +62,17 @@ describe("parser", () => {
   });
 });
 
+describe("checksum", () => {
+  it("matches BIP-380 and Bitcoin Core vectors", () => {
+    assert.equal(descsumCreate("raw(deadbeef)").slice(-8), "89f8spxm");
+    assert.equal(descsumCheck("raw(deadbeef)#89f8spxm"), true);
+    assert.equal(
+      descsumCreate("pkh(0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798)").slice(-8),
+      "e48zzw02",
+    );
+  });
+});
+
 describe("keys", () => {
   it("parses origin key expressions", () => {
     const p = parseKeyExpr(`[deadbeef/48h/0h/0h/2h]${XPUB}/<0;1>/*`);

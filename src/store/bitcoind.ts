@@ -28,6 +28,7 @@ interface BitcoindState {
   trace: DiagReport | null;
   lastCheck: NodeCheck | null;
   error: string | null;
+  checking: boolean;
   setOpen: (open: boolean) => void;
   patch: (p: Partial<Pick<BitcoindState, "url" | "username" | "password" | "kind">>) => void;
   connectDemo: () => void;
@@ -44,6 +45,8 @@ const DEMO_PROBE: NodeProbe = {
   blocks: 0,
 };
 
+let finishLock: Promise<void> | null = null;
+
 export const useBitcoind = create<BitcoindState>()(
   persist(
     (set, get) => ({
@@ -59,6 +62,7 @@ export const useBitcoind = create<BitcoindState>()(
       trace: null,
       lastCheck: null,
       error: null,
+      checking: false,
       setOpen: (open) => set({ open }),
       patch: (p) => set(p),
       connectDemo: () =>
@@ -72,13 +76,14 @@ export const useBitcoind = create<BitcoindState>()(
         }),
       connectLive: async (network = "mainnet") => {
         const { url, username, password } = get();
-        set({ status: "connecting", error: null, demo: false, lastCheck: null, trace: null, bridge: "off" });
+        set({ status: "connecting", error: null, demo: false, lastCheck: null, trace: null, bridge: "off", checking: false });
         const report = await diagnoseNode({ url, username, password }, network);
         if (report.ok && report.probe) {
           set({ status: "ready", probe: report.probe, demo: false, error: null, trace: report, bridge: "off" });
           return;
         }
         if (corsBlocked(report)) {
+          const { isBridgeOn } = await import("@/lib/bitcoind/bridge");
           set({
             status: "error",
             probe: null,
@@ -86,6 +91,7 @@ export const useBitcoind = create<BitcoindState>()(
             bridge: "needed",
             error: "node.err.cors",
           });
+          if (isBridgeOn()) void get().finishBridge();
           return;
         }
         const failed = [...report.steps].reverse().find((s) => s.status === "fail");
@@ -97,19 +103,56 @@ export const useBitcoind = create<BitcoindState>()(
           error: failed ? `${failed.id}: ${failed.detail}` : "node.err.blocked",
         });
       },
-      finishBridge: async () => {
-        const { url, username, password } = get();
-        set({ bridge: "on", error: null });
+      finishBridge: () => {
+        if (finishLock) return finishLock;
+        finishLock = (async () => {
+        const { url, username, password, trace } = get();
+        set({ status: "connecting", bridge: "on", error: null, checking: false });
         try {
+          const { lastBridgeHttp } = await import("@/lib/bitcoind/bridge");
           const probe = await probeNode({ url: normalizeRpcUrl(url), username, password });
-          set({ status: "ready", probe, demo: false, error: null, bridge: "on" });
+          const http = lastBridgeHttp();
+          const summary = probe.subversion
+            ? `${probe.subversion}${probe.chain ? ` · ${probe.chain}` : ""}${probe.blocks ? ` · ${probe.blocks} Bl.` : ""}`
+            : (http || "POST 200").slice(0, 160);
+          const steps = trace
+            ? [
+                ...trace.steps
+                  .filter((s) => s.id !== "bridge" && s.id !== "corsGet" && s.id !== "preflight" && s.id !== "perm")
+                  .map((s) => (s.id === "rpc" ? { ...s, status: "ok" as const, detail: "via Brücke" } : s)),
+                { id: "bridge", status: "ok" as const, detail: summary },
+              ]
+            : [];
+          set({
+            status: "ready",
+            probe,
+            demo: false,
+            error: null,
+            bridge: "on",
+            trace: trace ? { ...trace, ok: true, probe, steps } : trace,
+          });
         } catch (e) {
+          const { lastBridgeHttp } = await import("@/lib/bitcoind/bridge");
+          const detail = lastBridgeHttp() || (e instanceof Error ? e.message : "node.err.blocked");
           set({
             status: "error",
             error: e instanceof Error ? e.message : "node.err.blocked",
             bridge: "on",
+            trace: trace
+              ? {
+                  ...trace,
+                  steps: [
+                    ...trace.steps.filter((s) => s.id !== "bridge"),
+                    { id: "bridge", status: "fail", detail },
+                  ],
+                }
+              : trace,
           });
         }
+        })().finally(() => {
+          finishLock = null;
+        });
+        return finishLock;
       },
       disconnect: () => {
         void import("@/lib/bitcoind/bridge").then((m) => m.dropBridge());
@@ -141,16 +184,17 @@ export const useBitcoind = create<BitcoindState>()(
           });
           return;
         }
-        set({ error: null });
+        set({ error: null, checking: true });
         try {
           const result = await validateOnNode(
             { url: normalizeRpcUrl(url, network), username, password },
             descriptor,
           );
-          set({ lastCheck: { ...result, source: "core" }, error: null });
+          set({ lastCheck: { ...result, source: "core" }, error: null, checking: false });
         } catch (e) {
           set({
             lastCheck: null,
+            checking: false,
             error: e instanceof Error ? e.message : "node.err.invalid",
           });
         }

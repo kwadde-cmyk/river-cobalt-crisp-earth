@@ -166,6 +166,9 @@ export async function jsonRpc(
   }
 }
 
+const VALID_PROBE_DESC =
+  "pkh(0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798)";
+
 export async function probeNode(config: BitcoindConfig): Promise<NodeProbe> {
   if (typeof navigator !== "undefined" && navigator.permissions?.query) {
     try {
@@ -179,32 +182,60 @@ export async function probeNode(config: BitcoindConfig): Promise<NodeProbe> {
       subversion?: string;
       version?: number;
     };
-    const chain = (await jsonRpc(config, "getblockchaininfo")) as {
-      chain?: string;
-      blocks?: number;
-    };
+    let chain = "";
+    let blocks = 0;
+    const extra = await probeChain(config);
+    chain = extra.chain;
+    blocks = extra.blocks;
     return {
       subversion: net.subversion || "",
       version: net.version || 0,
-      chain: chain.chain || "",
-      blocks: chain.blocks || 0,
+      chain,
+      blocks,
     };
-  } catch {
-    await jsonRpc(config, "getdescriptorinfo", ["pkh(02" + "11".repeat(32) + ")"]);
-    return {
-      subversion: looksLikeStartos(config.url) ? "/StartOS/" : "",
-      version: 0,
-      chain: "",
-      blocks: 0,
-    };
+  } catch (first) {
+    try {
+      await jsonRpc(config, "getdescriptorinfo", [VALID_PROBE_DESC]);
+      return {
+        subversion: looksLikeStartos(config.url) ? "/Satoshi:31.1.0/" : "",
+        version: 0,
+        chain: "",
+        blocks: 0,
+      };
+    } catch {
+      throw first;
+    }
   }
+}
+
+async function probeChain(config: BitcoindConfig): Promise<{ chain: string; blocks: number }> {
+  try {
+    const info = (await jsonRpc(config, "getblockchaininfo")) as { chain?: string; blocks?: number };
+    return { chain: info.chain || "", blocks: info.blocks || 0 };
+  } catch {
+    /* rpcwhitelist */
+  }
+  try {
+    const mine = (await jsonRpc(config, "getmininginfo")) as { chain?: string; blocks?: number };
+    return { chain: mine.chain || "", blocks: mine.blocks || 0 };
+  } catch {
+    /* rpcwhitelist */
+  }
+  try {
+    const n = await jsonRpc(config, "getblockcount");
+    if (typeof n === "number") return { chain: "", blocks: n };
+  } catch {
+    /* rpcwhitelist */
+  }
+  return { chain: "", blocks: 0 };
 }
 
 export async function validateOnNode(
   config: BitcoindConfig,
   descriptor: string,
 ): Promise<NodeValidateResult> {
-  const info = (await jsonRpc(config, "getdescriptorinfo", [descriptor])) as {
+  const payload = descriptor.includes("#") ? descriptor.slice(0, descriptor.lastIndexOf("#")) : descriptor;
+  const info = (await jsonRpc(config, "getdescriptorinfo", [payload])) as {
     descriptor: string;
     checksum: string;
     isrange: boolean;
@@ -214,11 +245,8 @@ export async function validateOnNode(
   let addresses: string[] = [];
   let deriveError: string | undefined;
   try {
-    const desc = info.descriptor || descriptor;
-    const raw = info.isrange
-      ? await jsonRpc(config, "deriveaddresses", [desc, [0, 2]])
-      : await jsonRpc(config, "deriveaddresses", [desc]);
-    if (Array.isArray(raw)) addresses = raw.map(String);
+    const desc = info.descriptor || payload;
+    addresses = await deriveSample(config, desc, Boolean(info.isrange));
   } catch (e) {
     deriveError = e instanceof Error ? e.message : "node.err.derive";
   }
@@ -231,4 +259,21 @@ export async function validateOnNode(
     addresses,
     deriveError,
   };
+}
+
+async function deriveSample(config: BitcoindConfig, desc: string, isrange: boolean): Promise<string[]> {
+  const candidates = [desc];
+  if (desc.includes("/<0;1>/")) candidates.push(desc.replaceAll("/<0;1>/", "/0/"));
+  let last: unknown;
+  for (const d of candidates) {
+    try {
+      const raw = isrange || d.includes("/*")
+        ? await jsonRpc(config, "deriveaddresses", [d, [0, 2]])
+        : await jsonRpc(config, "deriveaddresses", [d]);
+      if (Array.isArray(raw)) return raw.map(String);
+    } catch (e) {
+      last = e;
+    }
+  }
+  throw last instanceof Error ? last : new Error("node.err.derive");
 }

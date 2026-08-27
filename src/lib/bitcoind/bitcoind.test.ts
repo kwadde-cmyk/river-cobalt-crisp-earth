@@ -53,6 +53,8 @@ describe("bitcoind rpc helpers", () => {
     const src = bridgeScript("https://scriptwerk.example");
     assert.match(src, /method:"POST"/);
     assert.match(src, /scriptwerk-bridge-ready/);
+    assert.match(src, /text\/plain/);
+    assert.match(src, /scriptwerk-hello/);
     assert.doesNotMatch(src, /method:"GET"/);
   });
 

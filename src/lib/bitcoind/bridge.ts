@@ -10,6 +10,7 @@ let targetOrigin = "";
 let auth = { user: "", pass: "" };
 const pending = new Map<number, Pending>();
 let seq = 1;
+let lastHttp = "";
 
 export function corsBlocked(report: DiagReport): boolean {
   const reachOk = report.steps.some((s) => s.id === "reach" && s.status === "ok");
@@ -32,10 +33,15 @@ export function isBridgeOn(): boolean {
   return Boolean(target && !target.closed);
 }
 
+export function lastBridgeHttp(): string {
+  return lastHttp;
+}
+
 export function dropBridge(): void {
   target = null;
   targetOrigin = "";
   auth = { user: "", pass: "" };
+  lastHttp = "";
   for (const p of pending.values()) p.reject(new Error("node.err.bridgeGone"));
   pending.clear();
 }
@@ -49,7 +55,7 @@ export function rpcViaBridge(method: string, params: unknown[] = []): Promise<un
     const timer = window.setTimeout(() => {
       pending.delete(id);
       reject(new Error("node.err.unreachable"));
-    }, 15000);
+    }, 20000);
     pending.set(id, {
       resolve: (value) => {
         window.clearTimeout(timer);
@@ -65,7 +71,84 @@ export function rpcViaBridge(method: string, params: unknown[] = []): Promise<un
 }
 
 export function bridgeScript(parentOrigin: string): string {
-  return `(function(){var P=${JSON.stringify(parentOrigin)};var rpc=(location.href||"").split("#")[0].replace(/\\/$/,"")||(location.origin+"/");function go(d,w){try{(w||window.opener||window.parent).postMessage(d,P);}catch(e){}}function paint(){try{document.title="Scriptwerk-Bruecke";var s="font-family:system-ui,sans-serif;background:#0b0c0e;color:#e8e6e3;padding:32px;max-width:36rem;line-height:1.45";document.body.setAttribute("style",s);document.body.innerHTML="<h1 style=\\"font-size:1.35rem;margin:0 0 12px\\">Scriptwerk-Brücke aktiv</h1><p>Diesen Tab offen lassen und zurück zu Scriptwerk gehen.</p><p style=\\"color:#9a9590\\">Die Meldung <code>JSONRPC server handles only POST requests</code> war nur ein GET. bitcoind spricht ausschließlich POST — das übernimmt diese Brücke.</p>";}catch(e){}}window.addEventListener("message",function(e){if(e.origin!==P||!e.data||e.data.type!=="scriptwerk-rpc")return;var h={"Content-Type":"application/json"};if(e.data.auth&&e.data.auth.user)h.Authorization="Basic "+btoa(e.data.auth.user+":"+e.data.auth.pass);fetch(rpc,{method:"POST",headers:h,body:JSON.stringify({jsonrpc:"1.0",id:e.data.id,method:e.data.method,params:e.data.params||[]}),credentials:"include"}).then(function(r){return r.json();}).then(function(json){e.source.postMessage({type:"scriptwerk-rpc-result",id:e.data.id,json:json},P);}).catch(function(err){e.source.postMessage({type:"scriptwerk-rpc-result",id:e.data.id,error:String(err)},P);});});paint();go({type:"scriptwerk-bridge-ready",origin:location.origin});})();`;
+  return `(function(){
+var P=${JSON.stringify(parentOrigin)};
+var rpc=location.origin+"/";
+var auth=null;
+function go(d){try{(window.opener||window.parent).postMessage(d,P);}catch(e){}}
+function paint(extra){
+  document.title="Scriptwerk-Bruecke";
+  document.body.setAttribute("style","font-family:system-ui,sans-serif;background:#0b0c0e;color:#e8e6e3;padding:32px;max-width:36rem;line-height:1.45");
+  document.body.innerHTML="<h1 style=\\"font-size:1.35rem;margin:0 0 12px\\">Scriptwerk-Brücke aktiv</h1><p>Diesen Tab offen lassen und zu Scriptwerk zurückgehen.</p><p style=\\"color:#9a9590\\">bitcoind spricht nur POST. GET-Meldung im Tab ist normal.</p><pre id=swlog style=\\"white-space:pre-wrap;color:#7d9b96;font-size:12px;margin-top:16px\\"></pre>";
+  if(extra){var el=document.getElementById("swlog");if(el)el.textContent=extra;}
+}
+function b64(s){
+  try{return btoa(s);}catch(e){
+    return btoa(unescape(encodeURIComponent(s)));
+  }
+}
+function headers(){
+  var h={"Content-Type":"text/plain","Accept":"application/json"};
+  if(auth&&auth.user)h.Authorization="Basic "+b64(String(auth.user)+":"+String(auth.pass||""));
+  return h;
+}
+function post(method,params,id){
+  var body=JSON.stringify({jsonrpc:"1.0",id:id,method:String(method||""),params:params||[]});
+  return fetch(rpc,{method:"POST",headers:headers(),body:body,credentials:"omit",cache:"no-store",mode:"same-origin"})
+    .then(function(r){return r.text().then(function(t){return {status:r.status,text:t};});})
+    .catch(function(e){
+      var h2={"Content-Type":"application/json"};
+      if(auth&&auth.user)h2.Authorization="Basic "+b64(String(auth.user)+":"+String(auth.pass||""));
+      return fetch(rpc,{method:"POST",headers:h2,body:body,credentials:"omit",cache:"no-store"})
+        .then(function(r){return r.text().then(function(t){return {status:r.status,text:t};});});
+    });
+}
+function packErr(pack){
+  var raw=(pack.text||"").replace(/\\s+/g," ").slice(0,220);
+  if(pack.status===401||pack.status===403) return "node.err.auth · HTTP "+pack.status+" "+raw;
+  try{
+    var j=JSON.parse(pack.text||"");
+    if(j&&j.error&&j.error.message) return "HTTP "+pack.status+" · "+j.error.message;
+  }catch(e){}
+  return "HTTP "+pack.status+" · "+(raw||"leerer Body");
+}
+function sendResult(id,pack){
+  var json=null;
+  try{json=pack.text?JSON.parse(pack.text):null;}catch(e){}
+  var err=null;
+  if(!json) err=packErr(pack);
+  else if(pack.status===401||pack.status===403) err="node.err.auth";
+  else if(json.error&&json.error.message) err=json.error.message;
+  else if(pack.status>=400 && json.result==null) err=packErr(pack);
+  go({type:"scriptwerk-rpc-result",id:id,json:json,error:err,http:pack.status,raw:(pack.text||"").slice(0,240)});
+}
+window.addEventListener("message",function(e){
+  if(e.origin!==P||!e.data)return;
+  if(e.data.type==="scriptwerk-hello"){
+    auth=e.data.auth||auth;
+    post("getnetworkinfo",[], "hello").then(function(pack){
+      paint("Selbsttest getnetworkinfo → HTTP "+pack.status+"\\n"+(pack.text||"").slice(0,280));
+      go({type:"scriptwerk-bridge-probe",http:pack.status,text:(pack.text||"").slice(0,400)});
+      sendResult("hello",pack);
+    }).catch(function(err){
+      paint(String(err));
+      go({type:"scriptwerk-bridge-probe",error:String(err)});
+    });
+    return;
+  }
+  if(e.data.type!=="scriptwerk-rpc")return;
+  if(e.data.auth) auth=e.data.auth;
+  post(e.data.method,e.data.params,e.data.id).then(function(pack){
+    paint("RPC "+e.data.method+" → HTTP "+pack.status+"\\n"+(pack.text||"").slice(0,280));
+    sendResult(e.data.id,pack);
+  }).catch(function(err){
+    paint(String(err));
+    go({type:"scriptwerk-rpc-result",id:e.data.id,error:String(err)});
+  });
+});
+paint("");
+go({type:"scriptwerk-bridge-ready",origin:location.origin});
+})();`.replace(/\n/g, "");
 }
 
 export function bookmarkletHref(parentOrigin: string): string {
@@ -76,6 +159,9 @@ export function openNodeTab(url: string): Window | null {
   return window.open(url, "scriptwerk-node");
 }
 
+let onReadyCb: () => void = () => {};
+let listening = false;
+
 export function watchBridge(
   expectedOrigin: string,
   creds: { user: string; pass: string },
@@ -83,29 +169,44 @@ export function watchBridge(
 ): () => void {
   targetOrigin = expectedOrigin;
   auth = { user: creds.user, pass: creds.pass };
+  onReadyCb = onReady;
+  if (listening) return () => {};
+  listening = true;
   const onMsg = (e: MessageEvent) => {
-    if (e.origin !== expectedOrigin) return;
+    if (e.origin !== targetOrigin) return;
     const data = e.data as {
       type?: string;
-      id?: number;
+      id?: number | string;
       json?: { result?: unknown; error?: { message?: string } };
       error?: string;
+      http?: number;
+      raw?: string;
+      text?: string;
     } | null;
     if (!data || typeof data !== "object") return;
     if (data.type === "scriptwerk-bridge-ready" && e.source) {
       target = e.source as Window;
-      target.postMessage({ type: "scriptwerk-hello", auth }, expectedOrigin);
-      onReady();
+      target.postMessage({ type: "scriptwerk-hello", auth }, targetOrigin);
+      onReadyCb();
       return;
     }
-    if (data.type !== "scriptwerk-rpc-result" || data.id == null) return;
-    const wait = pending.get(data.id);
+    if (data.type === "scriptwerk-bridge-probe") {
+      lastHttp = data.error
+        ? String(data.error)
+        : `HTTP ${data.http ?? "?"} ${(data.text || "").replace(/\s+/g, " ").slice(0, 180)}`;
+      return;
+    }
+    if (data.type !== "scriptwerk-rpc-result" || data.id == null || data.id === "hello") return;
+    const wait = pending.get(Number(data.id));
     if (!wait) return;
-    pending.delete(data.id);
+    pending.delete(Number(data.id));
+    if (data.http != null || data.raw) {
+      lastHttp = `HTTP ${data.http ?? "?"} ${(data.raw || data.error || "").replace(/\s+/g, " ").slice(0, 180)}`;
+    }
     if (data.error) wait.reject(new Error(data.error));
     else if (data.json?.error?.message) wait.reject(new Error(data.json.error.message));
     else wait.resolve(data.json?.result);
   };
   window.addEventListener("message", onMsg);
-  return () => window.removeEventListener("message", onMsg);
+  return () => {};
 }

@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useT } from "@/lib/use-t";
 import { localizeMessage } from "@/lib/i18n";
-import { Server } from "lucide-react";
+import { Loader2, Server } from "lucide-react";
 import { toast } from "sonner";
 import { defaultRpcPort, isLanIpUrl, looksLikeStartos, normalizeRpcUrl } from "@/lib/bitcoind/rpc";
 
@@ -27,19 +27,47 @@ export function NodeButton() {
   const open = useBitcoind((s) => s.open);
   const setOpen = useBitcoind((s) => s.setOpen);
   const status = useBitcoind((s) => s.status);
+  const checking = useBitcoind((s) => s.checking);
   const ready = status === "ready";
+  const loading = status === "connecting" || checking;
+  useKeepBridge();
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="icon" className="relative size-9" aria-label={t("header.node")} aria-pressed={ready}>
-          <Server />
-          {ready ? <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-ok" aria-hidden /> : null}
+        <Button variant="outline" size="icon" className="relative size-9" aria-label={t("header.node")} aria-pressed={ready} aria-busy={loading}>
+          {loading ? <Loader2 className="animate-spin" /> : <Server />}
+          {ready && !loading ? <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-ok" aria-hidden /> : null}
+          {loading ? <span className="absolute top-1.5 right-1.5 size-1.5 animate-pulse rounded-full bg-warn" aria-hidden /> : null}
         </Button>
       </DialogTrigger>
       <NodeDialogBody />
     </Dialog>
   );
+}
+
+function useKeepBridge() {
+  const url = useBitcoind((s) => s.url);
+  const username = useBitcoind((s) => s.username);
+  const password = useBitcoind((s) => s.password);
+  const finishBridge = useBitcoind((s) => s.finishBridge);
+  const network = useStudio((s) => s.network);
+  const nodeUrl = normalizeRpcUrl(url, network);
+
+  useEffect(() => {
+    return watchBridge(originOf(nodeUrl), { user: username, pass: password }, () => {
+      void (async () => {
+        await finishBridge();
+        const st = useBitcoind.getState();
+        if (st.status !== "ready") return;
+        const s = useStudio.getState();
+        const compiled = s.root ? compileDescriptor(s.root, s.keys, s.reuseKeys) : null;
+        if (compiled?.ok && compiled.descriptor.includes("xpub")) {
+          await st.validate(compiled.descriptor, s.network);
+        }
+      })();
+    });
+  }, [nodeUrl, username, password, finishBridge]);
 }
 
 function NodeDialogBody() {
@@ -53,11 +81,11 @@ function NodeDialogBody() {
   const demo = useBitcoind((s) => s.demo);
   const probe = useBitcoind((s) => s.probe);
   const lastCheck = useBitcoind((s) => s.lastCheck);
+  const checking = useBitcoind((s) => s.checking);
   const error = useBitcoind((s) => s.error);
   const trace = useBitcoind((s) => s.trace);
   const connectDemo = useBitcoind((s) => s.connectDemo);
   const connectLive = useBitcoind((s) => s.connectLive);
-  const finishBridge = useBitcoind((s) => s.finishBridge);
   const disconnect = useBitcoind((s) => s.disconnect);
   const validate = useBitcoind((s) => s.validate);
   const bridge = useBitcoind((s) => s.bridge);
@@ -74,13 +102,6 @@ function NodeDialogBody() {
   const startos = kind === "startos" || looksLikeStartos(url);
   const ipWarn = startos && isLanIpUrl(url);
   const nodeUrl = normalizeRpcUrl(url, network);
-
-  useEffect(() => {
-    if (bridge !== "needed") return;
-    return watchBridge(originOf(nodeUrl), { user: username, pass: password }, () => {
-      void finishBridge();
-    });
-  }, [bridge, nodeUrl, username, password, finishBridge]);
 
   async function run(fn: () => Promise<void>) {
     setBusy(true);
@@ -182,6 +203,8 @@ function NodeDialogBody() {
         </p>
         {ipWarn ? <p className="text-2xs text-pretty text-warn">{t("node.startos.ipWarn")}</p> : null}
 
+        <NodeLoading busy={busy} />
+
         <div className="flex flex-wrap gap-2">
           {ready ? (
             <Button variant="outline" onClick={disconnect}>
@@ -189,8 +212,8 @@ function NodeDialogBody() {
             </Button>
           ) : (
             <>
-              <Button disabled={busy} onClick={() => void run(() => connectLive(network))}>
-                {t("node.connect")}
+              <Button disabled={busy || status === "connecting"} onClick={() => void run(() => connectLive(network))}>
+                {status === "connecting" ? t("node.loading.connect") : t("node.connect")}
               </Button>
               <Button variant="outline" disabled={busy} onClick={connectDemo}>
                 {t("node.demo")}
@@ -199,7 +222,7 @@ function NodeDialogBody() {
           )}
           <Button
             variant="secondary"
-            disabled={busy || !ready || !compiled?.ok}
+            disabled={busy || checking || !ready || !compiled?.ok}
             onClick={() =>
               void run(async () => {
                 if (!compiled?.ok) {
@@ -213,7 +236,7 @@ function NodeDialogBody() {
               })
             }
           >
-            {t("node.check")}
+            {checking ? t("node.loading.check") : t("node.check")}
           </Button>
         </div>
 
@@ -225,7 +248,7 @@ function NodeDialogBody() {
           </p>
         ) : null}
         {errText && !trace ? <p className="text-xs text-danger">{errText}</p> : null}
-        {error === "node.err.blocked" || error === "node.err.cors" || trace?.steps.some((s) => s.status === "fail") ? (
+        {error === "node.err.blocked" || error === "node.err.cors" || (status !== "ready" && trace?.steps.some((s) => s.status === "fail")) ? (
           <Button variant="outline" size="sm" onClick={() => openNodeTab(nodeUrl)}>
             {t("node.openCert")}
           </Button>
@@ -241,6 +264,7 @@ function NodeDialogBody() {
 export function NodeCheckCard() {
   const { t, locale } = useT();
   const status = useBitcoind((s) => s.status);
+  const checking = useBitcoind((s) => s.checking);
   const lastCheck = useBitcoind((s) => s.lastCheck);
   const error = useBitcoind((s) => s.error);
   const validate = useBitcoind((s) => s.validate);
@@ -261,7 +285,7 @@ export function NodeCheckCard() {
           variant="ghost"
           size="sm"
           className="h-8"
-          disabled={!compiled?.ok}
+          disabled={!compiled?.ok || checking}
           onClick={() => {
             if (!ready) {
               setOpen(true);
@@ -270,9 +294,10 @@ export function NodeCheckCard() {
             if (compiled?.ok) void validate(compiled.descriptor, network);
           }}
         >
-          {ready ? t("node.check") : t("node.open")}
+          {checking ? t("node.loading.check") : ready ? t("node.check") : t("node.open")}
         </Button>
       </div>
+      {checking ? <NodeLoading busy={false} /> : null}
       <p className="text-xs text-fg-muted">
         {ready ? (demo ? t("node.demoOn") : t("node.connected")) : t("node.needConn")}
       </p>
@@ -282,12 +307,38 @@ export function NodeCheckCard() {
   );
 }
 
+function NodeLoading({ busy }: { busy: boolean }) {
+  const { t } = useT();
+  const status = useBitcoind((s) => s.status);
+  const checking = useBitcoind((s) => s.checking);
+  const bridge = useBitcoind((s) => s.bridge);
+  let label: string | null = null;
+  if (checking) label = t("node.loading.check");
+  else if (status === "connecting" || busy) label = t("node.loading.connect");
+  else if (bridge === "needed") label = t("node.loading.bridge");
+  if (!label) return null;
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-fg" role="status" aria-live="polite">
+      <Loader2 className="size-3.5 shrink-0 animate-spin text-fg-muted" />
+      <span>{label}</span>
+    </div>
+  );
+}
+
 function BridgePanel({ nodeUrl }: { nodeUrl: string }) {
   const { t } = useT();
   const bridge = useBitcoind((s) => s.bridge);
   const origin = typeof location !== "undefined" ? location.origin : "";
   const href = bookmarkletHref(origin);
   const script = bridgeScript(origin);
+
+  function copy(text: string, ok: string) {
+    void navigator.clipboard.writeText(text).then(
+      () => toast.success(ok),
+      () => toast.message(t("node.bridge.console")),
+    );
+  }
+
   return (
     <div className="space-y-2 rounded-lg border border-border bg-surface px-3 py-2">
       <p className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("node.bridge.title")}</p>
@@ -300,27 +351,11 @@ function BridgePanel({ nodeUrl }: { nodeUrl: string }) {
           <Button size="sm" onClick={() => openNodeTab(nodeUrl)}>
             {t("node.bridge.openTab")}
           </Button>
-          <a
-            href={href}
-            className="inline-flex h-9 items-center rounded-md border border-border px-3 text-xs hover:bg-muted"
-            onClick={(e) => {
-              e.preventDefault();
-              toast.message(t("node.bridge.drag"));
-            }}
-          >
-            {t("node.bridge.bookmark")}
-          </a>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              void navigator.clipboard.writeText(script).then(
-                () => toast.success(t("node.bridge.copied")),
-                () => toast.message(t("node.bridge.console")),
-              );
-            }}
-          >
+          <Button size="sm" onClick={() => copy(script, t("node.bridge.copied"))}>
             {t("node.bridge.copy")}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => copy(href, t("node.bridge.bookmarkCopied"))}>
+            {t("node.bridge.bookmark")}
           </Button>
         </div>
       ) : null}
@@ -338,7 +373,12 @@ function stepDot(status: DiagStatus): string {
 function TracePanel() {
   const { t } = useT();
   const trace = useBitcoind((s) => s.trace);
+  const status = useBitcoind((s) => s.status);
   if (!trace) return null;
+  const connected = status === "ready" && trace.ok;
+  const steps = connected
+    ? trace.steps.filter((s) => s.id === "url" || s.id === "auth" || s.id === "rpc" || s.id === "bridge")
+    : trace.steps;
   return (
     <div className="rounded-lg border border-border bg-surface px-3 py-2">
       <p className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("node.diag.title")}</p>
@@ -349,7 +389,7 @@ function TracePanel() {
         {t("node.diag.target")}: {trace.url}
       </p>
       <ol className="mt-2 space-y-1.5">
-        {trace.steps.map((step) => (
+        {steps.map((step) => (
           <li key={step.id} className="flex items-start gap-2 text-xs">
             <span className={`mt-1 size-1.5 shrink-0 rounded-full ${stepDot(step.status)}`} aria-hidden />
             <span className="min-w-0">
@@ -369,14 +409,16 @@ function CheckResult() {
   if (!lastCheck) return null;
   return (
     <div className="rounded-lg border border-border bg-surface px-3 py-2 text-xs">
-      <div className="flex flex-wrap items-center gap-1.5">
+      <p className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("node.checkTitle")}</p>
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
         <Badge variant={lastCheck.issolvable ? "ok" : "warn"}>
           {lastCheck.issolvable ? t("node.solvable") : t("node.unsolvable")}
         </Badge>
         {lastCheck.isrange ? <Badge>{t("node.range")}</Badge> : null}
         <Badge variant="default">{lastCheck.source === "core" ? t("node.sourceCore") : t("node.sourceDemo")}</Badge>
       </div>
-      <p className="mt-1.5 font-mono text-2xs break-all text-fg-muted">#{lastCheck.checksum}</p>
+      <p className="mt-1.5 font-mono text-2xs break-all text-fg">#{lastCheck.checksum}</p>
+      <p className="mt-1 max-h-24 overflow-y-auto font-mono text-2xs break-all text-fg-muted">{lastCheck.descriptor}</p>
       {lastCheck.addresses.length ? (
         <ul className="mt-2 space-y-0.5 font-mono text-2xs break-all text-fg-subtle">
           {lastCheck.addresses.map((a) => (

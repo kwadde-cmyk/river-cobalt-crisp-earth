@@ -7,8 +7,8 @@ const GEN = [
   0xf5dee51989n,
   0xa9fdca3312n,
   0x1bab10e32dn,
-  0x3707344b24n,
-  0x763dbe4974n,
+  0x3706b1677an,
+  0x644d626ffdn,
 ];
 
 function polymod(symbols: number[]): bigint {
