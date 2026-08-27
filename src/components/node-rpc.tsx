@@ -20,7 +20,7 @@ import { useT } from "@/lib/use-t";
 import { localizeMessage } from "@/lib/i18n";
 import { Loader2, Server } from "lucide-react";
 import { toast } from "sonner";
-import { defaultRpcPort, isLanIpUrl, looksLikeStartos, normalizeRpcUrl } from "@/lib/bitcoind/rpc";
+import { defaultRpcPort, hostProxyAvailable, isLanIpUrl, looksLikeStartos, normalizeRpcUrl } from "@/lib/bitcoind/rpc";
 
 export function NodeButton() {
   const { t } = useT();
@@ -94,6 +94,7 @@ function NodeDialogBody() {
   const reuseKeys = useStudio((s) => s.reuseKeys);
   const network = useStudio((s) => s.network);
   const [busy, setBusy] = useState(false);
+  const [proxyOn, setProxyOn] = useState(false);
 
   const compiled = root ? compileDescriptor(root, keys, reuseKeys) : null;
   const ready = status === "ready";
@@ -102,6 +103,10 @@ function NodeDialogBody() {
   const startos = kind === "startos" || looksLikeStartos(url);
   const ipWarn = startos && isLanIpUrl(url);
   const nodeUrl = normalizeRpcUrl(url, network);
+
+  useEffect(() => {
+    void hostProxyAvailable().then(setProxyOn);
+  }, []);
 
   async function run(fn: () => Promise<void>) {
     setBusy(true);
@@ -204,6 +209,7 @@ function NodeDialogBody() {
         {ipWarn ? <p className="text-2xs text-pretty text-warn">{t("node.startos.ipWarn")}</p> : null}
 
         <NodeLoading busy={busy} />
+        {proxyOn ? <p className="text-xs text-ok">{t("node.proxyOn")}</p> : null}
 
         <div className="flex flex-wrap gap-2">
           {ready ? (

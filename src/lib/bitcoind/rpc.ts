@@ -158,12 +158,40 @@ export async function jsonRpc(
 ): Promise<unknown> {
   const { isBridgeOn, rpcViaBridge } = await import("./bridge.ts");
   if (isBridgeOn()) return rpcViaBridge(method, params);
+  if (await hostProxyAvailable()) return rpcViaHost(method, params);
   try {
     return await jsonRpcDirect(config, method, params);
   } catch (e) {
     if (!isBridgeOn()) throw e;
     return rpcViaBridge(method, params);
   }
+}
+
+let hostProxyMemo: boolean | null = null;
+
+export async function hostProxyAvailable(): Promise<boolean> {
+  if (typeof fetch === "undefined") return false;
+  if (hostProxyMemo != null) return hostProxyMemo;
+  try {
+    const res = await fetch("/bitcoind-rpc", { method: "GET", cache: "no-store" });
+    hostProxyMemo = res.status === 204;
+  } catch {
+    hostProxyMemo = false;
+  }
+  return hostProxyMemo;
+}
+
+async function rpcViaHost(method: string, params: unknown[]): Promise<unknown> {
+  const res = await fetch("/bitcoind-rpc", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify({ method, params }),
+  });
+  const body = (await res.json().catch(() => null)) as RpcOk | RpcErr | null;
+  if (!body) throw new Error("node.err.http");
+  if (body.error) throw new Error(body.error.message || `RPC ${body.error.code}`);
+  return body.result;
 }
 
 const VALID_PROBE_DESC =

@@ -1,0 +1,15 @@
+[Unit]
+Description=Scriptwerk Miniscript Studio
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/scriptwerk
+ExecStart=/usr/bin/docker compose --env-file /opt/scriptwerk/deploy/.env -f /opt/scriptwerk/deploy/docker-compose.yml up -d
+ExecStop=/usr/bin/docker compose -f /opt/scriptwerk/deploy/docker-compose.yml down
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

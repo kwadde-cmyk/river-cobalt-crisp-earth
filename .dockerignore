@@ -1,0 +1,16 @@
+node_modules
+.git
+.github
+artifacts
+attachments
+screenshots
+*.log
+.env
+.env.*
+.output
+dist
+.tanstack
+.nitro
+.project_id
+.github_repo
+deploy/.env

@@ -77,6 +77,35 @@ export const useBitcoind = create<BitcoindState>()(
       connectLive: async (network = "mainnet") => {
         const { url, username, password } = get();
         set({ status: "connecting", error: null, demo: false, lastCheck: null, trace: null, bridge: "off", checking: false });
+        const { hostProxyAvailable } = await import("@/lib/bitcoind/rpc");
+        if (await hostProxyAvailable()) {
+          try {
+            const probe = await probeNode({ url: normalizeRpcUrl(url, network), username, password });
+            set({
+              status: "ready",
+              probe,
+              demo: false,
+              error: null,
+              bridge: "off",
+              trace: {
+                url: "same-origin /bitcoind-rpc",
+                origin: typeof location !== "undefined" ? location.origin : "",
+                space: "local",
+                ok: true,
+                probe,
+                steps: [{ id: "rpc", status: "ok", detail: "Server-Proxy" }],
+              },
+            });
+            return;
+          } catch (e) {
+            set({
+              status: "error",
+              probe: null,
+              error: e instanceof Error ? e.message : "node.err.unreachable",
+            });
+            return;
+          }
+        }
         const report = await diagnoseNode({ url, username, password }, network);
         if (report.ok && report.probe) {
           set({ status: "ready", probe: report.probe, demo: false, error: null, trace: report, bridge: "off" });
