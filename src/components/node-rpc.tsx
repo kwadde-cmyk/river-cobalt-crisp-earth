@@ -369,6 +369,50 @@ function BridgePanel({ nodeUrl }: { nodeUrl: string }) {
   );
 }
 
+function shortenDisplay(text: string): string {
+  const raw = text.trim();
+  if (raw.length < 36) return text;
+  const marked = text
+    .replace(/https?:\/\/[^\s]+/gi, shortenUrl)
+    .replace(/\b((?:bc1|tb1|bcrt1)[a-z0-9]{20,}|[13nm2][a-km-zA-HJ-NP-Z1-9]{25,})\b/g, shortenBtc);
+  if (marked !== text) return marked;
+  return `${raw.slice(0, 18)}…${raw.slice(-12)}`;
+}
+
+function shortenUrl(raw: string): string {
+  try {
+    const u = new URL(raw);
+    let host = u.hostname;
+    if (host.length > 22) host = `${host.slice(0, 10)}…${host.slice(-8)}`;
+    return `${u.protocol}//${host}${u.port ? `:${u.port}` : ""}`;
+  } catch {
+    return raw.length > 40 ? `${raw.slice(0, 16)}…${raw.slice(-10)}` : raw;
+  }
+}
+
+function shortenBtc(s: string): string {
+  return s.length > 16 ? `${s.slice(0, 8)}…${s.slice(-6)}` : s;
+}
+
+function ClipText({ value, className }: { value: string; className?: string }) {
+  const { t } = useT();
+  const [open, setOpen] = useState(false);
+  const short = shortenDisplay(value);
+  if (!value) return <span className={className}>—</span>;
+  if (short === value) return <span className={className}>{value}</span>;
+  return (
+    <button
+      type="button"
+      className={`max-w-full text-left font-mono break-all ${className ?? ""}`}
+      onClick={() => setOpen((v) => !v)}
+      title={open ? t("node.addr.less") : t("node.addr.more")}
+      aria-expanded={open}
+    >
+      {open ? value : short}
+    </button>
+  );
+}
+
 function stepDot(status: DiagStatus): string {
   if (status === "ok") return "bg-ok";
   if (status === "fail") return "bg-danger";
@@ -388,11 +432,14 @@ function TracePanel() {
   return (
     <div className="rounded-lg border border-border bg-surface px-3 py-2">
       <p className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("node.diag.title")}</p>
-      <p className="mt-1 font-mono text-2xs break-all text-fg-muted">
-        {t("node.diag.origin")}: {trace.origin || "—"}
+      <p className="mt-1 text-2xs text-pretty text-fg-muted">{t("node.diag.hint")}</p>
+      <p className="mt-1.5 flex flex-wrap items-baseline gap-x-1 font-mono text-2xs text-fg-muted">
+        <span>{t("node.diag.origin")}:</span>
+        <ClipText value={trace.origin || "—"} />
       </p>
-      <p className="font-mono text-2xs break-all text-fg-muted">
-        {t("node.diag.target")}: {trace.url}
+      <p className="flex flex-wrap items-baseline gap-x-1 font-mono text-2xs text-fg-muted">
+        <span>{t("node.diag.target")}:</span>
+        <ClipText value={trace.url} />
       </p>
       <ol className="mt-2 space-y-1.5">
         {steps.map((step) => (
@@ -400,7 +447,9 @@ function TracePanel() {
             <span className={`mt-1 size-1.5 shrink-0 rounded-full ${stepDot(step.status)}`} aria-hidden />
             <span className="min-w-0">
               <span className="text-fg">{t(`node.diag.${step.id}`)}</span>
-              <span className="mt-0.5 block font-mono text-2xs break-all text-fg-muted">{step.detail}</span>
+              <span className="mt-0.5 block min-w-0">
+                <ClipText value={step.detail} className="text-2xs text-fg-muted" />
+              </span>
             </span>
           </li>
         ))}
@@ -416,6 +465,7 @@ function CheckResult() {
   return (
     <div className="rounded-lg border border-border bg-surface px-3 py-2 text-xs">
       <p className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("node.checkTitle")}</p>
+      <p className="mt-1 text-2xs text-pretty text-fg-muted">{t("node.check.hint")}</p>
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
         <Badge variant={lastCheck.issolvable ? "ok" : "warn"}>
           {lastCheck.issolvable ? t("node.solvable") : t("node.unsolvable")}
@@ -424,11 +474,15 @@ function CheckResult() {
         <Badge variant="default">{lastCheck.source === "core" ? t("node.sourceCore") : t("node.sourceDemo")}</Badge>
       </div>
       <p className="mt-1.5 font-mono text-2xs break-all text-fg">#{lastCheck.checksum}</p>
-      <p className="mt-1 max-h-24 overflow-y-auto font-mono text-2xs break-all text-fg-muted">{lastCheck.descriptor}</p>
+      <p className="mt-1 max-h-24 overflow-y-auto">
+        <ClipText value={lastCheck.descriptor} className="text-2xs text-fg-muted" />
+      </p>
       {lastCheck.addresses.length ? (
-        <ul className="mt-2 space-y-0.5 font-mono text-2xs break-all text-fg-subtle">
+        <ul className="mt-2 space-y-0.5">
           {lastCheck.addresses.map((a) => (
-            <li key={a}>{a}</li>
+            <li key={a}>
+              <ClipText value={a} className="text-2xs text-fg-subtle" />
+            </li>
           ))}
         </ul>
       ) : null}

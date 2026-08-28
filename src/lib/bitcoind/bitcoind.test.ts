@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { analyzeDescriptor } from "./analyze.ts";
-import { corsBlocked, bridgeScript } from "./bridge.ts";
+import { corsBlocked, bookmarkletHref, bridgeScript } from "./bridge.ts";
 import {
   addressSpace,
   defaultRpcPort,
@@ -55,7 +55,15 @@ describe("bitcoind rpc helpers", () => {
     assert.match(src, /scriptwerk-bridge-ready/);
     assert.match(src, /text\/plain/);
     assert.match(src, /scriptwerk-hello/);
-    assert.doesNotMatch(src, /method:"GET"/);
+    assert.match(src, /postMessage\(d,"\*"\)/);
+  });
+
+  it("builds a javascript bookmark that Chrome can store", () => {
+    const href = bookmarkletHref("https://hds-old.example");
+    assert.equal(href.startsWith("javascript:void "), true);
+    assert.match(href, /postMessage\(d,"\*"\)/);
+    assert.doesNotMatch(href, /%22/);
+    assert.equal(href.length < 8192, true);
   });
 
   it("splits a cookie user:pass pair", () => {

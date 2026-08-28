@@ -75,7 +75,15 @@ export function bridgeScript(parentOrigin: string): string {
 var P=${JSON.stringify(parentOrigin)};
 var rpc=location.origin+"/";
 var auth=null;
-function go(d){try{(window.opener||window.parent).postMessage(d,P);}catch(e){}}
+function parentWin(){return window.opener&&window.opener!==window?window.opener:(window.parent&&window.parent!==window?window.parent:null);}
+function go(d){var w=parentWin();if(!w)return;try{w.postMessage(d,"*");}catch(e){}}
+function fromParent(e){
+  if(!e||!e.data)return false;
+  var w=parentWin();
+  if(w&&e.source===w)return true;
+  if(e.origin===P)return true;
+  return false;
+}
 function paint(extra){
   document.title="Scriptwerk-Bruecke";
   document.body.setAttribute("style","font-family:system-ui,sans-serif;background:#0b0c0e;color:#e8e6e3;padding:32px;max-width:36rem;line-height:1.45");
@@ -123,7 +131,8 @@ function sendResult(id,pack){
   go({type:"scriptwerk-rpc-result",id:id,json:json,error:err,http:pack.status,raw:(pack.text||"").slice(0,240)});
 }
 window.addEventListener("message",function(e){
-  if(e.origin!==P||!e.data)return;
+  if(!fromParent(e))return;
+  P=e.origin||P;
   if(e.data.type==="scriptwerk-hello"){
     auth=e.data.auth||auth;
     post("getnetworkinfo",[], "hello").then(function(pack){
@@ -152,7 +161,8 @@ go({type:"scriptwerk-bridge-ready",origin:location.origin});
 }
 
 export function bookmarkletHref(parentOrigin: string): string {
-  return `javascript:${encodeURIComponent(bridgeScript(parentOrigin))}`;
+  const src = bridgeScript(parentOrigin);
+  return `javascript:void ${src}`;
 }
 
 export function openNodeTab(url: string): Window | null {
