@@ -4,6 +4,7 @@ import { compileMiniscript, expandAliasKeys } from "./compile.ts";
 import {
   emptyKey,
   extractKeysFromTree,
+  flattenKeysForLookup,
   formatFingerprint,
   nextKeyName,
   normalizeKeyEntry,
@@ -510,10 +511,18 @@ export function materializeWalletPolicy(
 ): { node: MsNode; keys: KeyEntry[] } {
   const desc = walletPolicyToDescriptor(policy);
   const parsed = parseAny(desc);
-  const extracted = extractKeysFromTree(parsed.node, existing);
-  const byXpub = new Map(policy.keys.filter((k) => k.xpub).map((k) => [k.xpub, k]));
+  const extracted = extractKeysFromTree(parsed.node, flattenKeysForLookup(existing));
+  const byXpub = new Map(
+    policy.keys
+      .filter((k) => k.xpub)
+      .map((k) => {
+        const id = k.xpub.match(/(?:xpub|tpub|ypub|zpub|vpub|Ypub|Zpub|Vpub)[1-9A-HJ-NP-Za-km-z]+/)?.[0] ?? k.xpub;
+        return [id, k] as const;
+      }),
+  );
   const keys = extracted.keys.map((k) => {
-    const hit = k.xpub ? byXpub.get(k.xpub) : undefined;
+    const xid = k.xpub.match(/(?:xpub|tpub|ypub|zpub|vpub|Ypub|Zpub|Vpub)[1-9A-HJ-NP-Za-km-z]+/)?.[0] ?? k.xpub;
+    const hit = xid ? byXpub.get(xid) : undefined;
     if (!hit) return k;
     const named = hit.label || hit.name;
     const note =

@@ -362,20 +362,65 @@ export function formatKeyList(keys: KeyEntry[]): string {
     .join("\n");
 }
 
+function xpubId(s: string): string {
+  const m = s.match(/(?:xpub|tpub|ypub|zpub|vpub|Ypub|Zpub|Vpub)[1-9A-HJ-NP-Za-km-z]+/);
+  return m ? m[0]! : s.trim();
+}
+
+/** Expand master+child entries so A1/A2 can be looked up by alias or xpub. */
+export function flattenKeysForLookup(keys: KeyEntry[]): KeyEntry[] {
+  const out: KeyEntry[] = keys.map((k) => normalizeKeyEntry(k));
+  const names = new Set(out.map((k) => k.name));
+  for (const k of keys) {
+    for (const c of k.children) {
+      const acc = parseAccountIndex(c.path);
+      const fromNote =
+        c.note && baseKeyName(c.note) === k.name && aliasAccountIndex(c.note) != null ? c.note : "";
+      const alias = fromNote || (acc != null && acc > 0 ? `${k.name}${acc}` : "");
+      if (!alias || names.has(alias)) continue;
+      names.add(alias);
+      out.push({
+        ...emptyKey(alias),
+        note: c.note && c.note !== alias ? c.note : "",
+        fingerprint: formatFingerprint(c.fingerprint || k.fingerprint),
+        derivation: normalizePath(c.path) || emptyKey(alias).derivation,
+        xpub: c.xpub,
+        children: [],
+      });
+    }
+  }
+  return out;
+}
+
 export function extractKeysFromTree(
   root: MsNode,
   existing: KeyEntry[],
 ): { node: MsNode; keys: KeyEntry[] } {
-  const existingByName = new Map(existing.map((k) => [k.name, k]));
-  const existingByXpub = new Map(existing.filter((k) => k.xpub).map((k) => [k.xpub, k]));
+  const lookup = flattenKeysForLookup(existing);
+  const existingByName = new Map(lookup.map((k) => [k.name, k]));
+  const existingByXpub = new Map(
+    lookup.filter((k) => k.xpub).map((k) => [xpubId(k.xpub), k] as const),
+  );
+  const existingByFpAcc = new Map<string, KeyEntry>();
+  for (const k of lookup) {
+    const fp = formatFingerprint(k.fingerprint);
+    const acc = parseAccountIndex(k.derivation);
+    if (fp && acc != null) existingByFpAcc.set(`${fp}|${acc}`, k);
+  }
   const assigned: KeyEntry[] = [];
   const usedNames = new Set<string>();
   const xpubToName = new Map<string, string>();
+  const fpMaster = new Map<string, string>();
 
   const remember = (k: KeyEntry) => {
-    assigned.push(normalizeKeyEntry(k));
-    usedNames.add(k.name);
-    if (k.xpub) xpubToName.set(k.xpub, k.name);
+    const n = normalizeKeyEntry(k);
+    assigned.push(n);
+    usedNames.add(n.name);
+    if (n.xpub) xpubToName.set(xpubId(n.xpub), n.name);
+    const fp = formatFingerprint(n.fingerprint);
+    const acc = parseAccountIndex(n.derivation) ?? 0;
+    if (fp && acc === 0) fpMaster.set(fp, baseKeyName(n.name));
+    else if (fp && !fpMaster.has(fp)) fpMaster.set(fp, baseKeyName(n.name));
   };
 
   const node = mapKeyStrings(root, (raw) => {
@@ -388,25 +433,72 @@ export function extractKeysFromTree(
       }
       return alias;
     }
-    if (parsed.xpub && xpubToName.has(parsed.xpub)) return xpubToName.get(parsed.xpub)!;
-    const prevX = parsed.xpub ? existingByXpub.get(parsed.xpub) : undefined;
-    if (prevX && !usedNames.has(prevX.name)) {
-      remember({
-        ...prevX,
-        fingerprint: parsed.fingerprint || prevX.fingerprint,
-        derivation: parsed.derivation || prevX.derivation,
-        xpub: parsed.xpub || prevX.xpub,
-        multipath: parsed.multipath || prevX.multipath,
-        childPath: parsed.childPath || prevX.childPath,
-      });
+    const xid = parsed.xpub ? xpubId(parsed.xpub) : "";
+    if (xid && xpubToName.has(xid)) return xpubToName.get(xid)!;
+
+    const prevX = xid ? existingByXpub.get(xid) : undefined;
+    if (prevX) {
+      if (!usedNames.has(prevX.name)) {
+        remember({
+          ...prevX,
+          fingerprint: parsed.fingerprint || prevX.fingerprint,
+          derivation: parsed.derivation || prevX.derivation,
+          xpub: xid || prevX.xpub,
+          multipath: parsed.multipath || prevX.multipath,
+          childPath: parsed.childPath || prevX.childPath,
+        });
+      }
       return prevX.name;
     }
+
+    const fp = formatFingerprint(parsed.fingerprint);
+    const acc = parseAccountIndex(parsed.derivation);
+    const prevFp = fp && acc != null ? existingByFpAcc.get(`${fp}|${acc}`) : undefined;
+    if (prevFp) {
+      if (!usedNames.has(prevFp.name)) {
+        remember({
+          ...prevFp,
+          fingerprint: fp || prevFp.fingerprint,
+          derivation: parsed.derivation || prevFp.derivation,
+          xpub: xid || prevFp.xpub,
+          multipath: parsed.multipath || prevFp.multipath,
+          childPath: parsed.childPath || prevFp.childPath,
+        });
+      }
+      return prevFp.name;
+    }
+
+    if (fp && acc != null && acc > 0) {
+      const masterName =
+        fpMaster.get(fp) ||
+        assigned.find((k) => formatFingerprint(k.fingerprint) === fp)?.name ||
+        lookup.find((k) => formatFingerprint(k.fingerprint) === fp && (parseAccountIndex(k.derivation) ?? 0) === 0)
+          ?.name;
+      if (masterName) {
+        const alias = `${baseKeyName(masterName)}${acc}`;
+        if (!usedNames.has(alias)) {
+          const prev = existingByName.get(alias);
+          remember({
+            ...(prev ?? emptyKey(alias)),
+            fingerprint: fp,
+            derivation: parsed.derivation,
+            xpub: xid,
+            multipath: parsed.multipath || "<0;1>",
+            childPath: parsed.childPath || "<0;1>/*",
+            note: prev?.note || "",
+          });
+        }
+        fpMaster.set(fp, baseKeyName(masterName));
+        return alias;
+      }
+    }
+
     const name = nextKeyName([...usedNames]);
     remember({
       ...emptyKey(name),
       fingerprint: parsed.fingerprint,
       derivation: parsed.derivation || emptyKey(name).derivation,
-      xpub: parsed.xpub,
+      xpub: xid,
       multipath: parsed.multipath || "<0;1>",
       childPath: parsed.childPath || "<0;1>/*",
     });

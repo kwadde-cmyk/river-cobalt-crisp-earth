@@ -10,6 +10,7 @@ import {
   groupKeysByFingerprint,
   emptyKey,
   extractKeysFromTree,
+  flattenKeysForLookup,
   formatBip32Path,
   formatKeyList,
   keyHeadline,
@@ -517,6 +518,67 @@ describe("bip388", () => {
     const bundle = parseScriptwerkBundle(json);
     assert.equal(bundle?.keys[0]?.note, "Alice");
     assert.equal(bundle?.keys[1]?.note, "Bob");
+  });
+
+  it("keeps child accounts on the same fingerprint instead of new letters", () => {
+    const childXpub =
+      "xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsfTFUHCdrfp1bgwQ9xv5ski8PX9rL2dZXvgGDnw";
+    const other =
+      "xpub6CohzjsqMhyQdTzBsHR41w1SFdGxPAjxCBJYPcvwx8Am2xFevsXJt1GcKS5epVSvAYhpSNiNqo86nLNBhYkY4SXL1MQeDkZgtR4xL1V4uRn";
+    const { root } = compileStages(
+      [
+        { id: "s0", delay: 0, k: 2, keys: ["A", "B"] },
+        { id: "s1", delay: 144, k: 1, keys: ["A1"] },
+      ],
+      false,
+    );
+    const keys = [
+      {
+        ...keyA,
+        note: "Alice",
+        children: [
+          { id: "ck1", path: "48'/0'/1'/2'", xpub: childXpub, fingerprint: "deadbeef", note: "A1" },
+        ],
+      },
+      { ...keyB, note: "Bob", fingerprint: "cafebabe", xpub: other, derivation: "48'/0'/0'/2'" },
+    ];
+    const compiled = compileDescriptor(root, keys, false);
+    assert.equal(compiled.ok, true);
+    const parsed = parseAny(compiled.descriptor);
+    const extracted = extractKeysFromTree(parsed.node, flattenKeysForLookup(keys));
+    assert.equal(compileMiniscript(extracted.node), compileMiniscript(root));
+    const a = extracted.keys.find((k) => k.name === "A");
+    const a1 = extracted.keys.find((k) => k.name === "A1");
+    const b = extracted.keys.find((k) => k.name === "B");
+    assert.equal(a?.note, "Alice");
+    assert.equal(a?.xpub, XPUB);
+    assert.equal(a1?.xpub, childXpub);
+    assert.equal(b?.note, "Bob");
+  });
+
+  it("maps policy-text labels by xpub even if @ order differs from tree order", () => {
+    const { root } = compileStages(
+      [
+        { id: "late", delay: 0, k: 1, keys: ["B"] },
+        { id: "early", delay: 144, k: 1, keys: ["A"] },
+      ],
+      false,
+    );
+    const keys = [
+      { ...keyA, note: "Alice" },
+      { ...keyB, note: "Bob" },
+    ];
+    const compiled = compileBip388(root, keys, "Scriptwerk", false);
+    const text = formatPolicyText(compiled.policy);
+    const parsed = parseWalletPolicy(text);
+    const { node, keys: restored } = materializeWalletPolicy(parsed!, []);
+    const alice = restored.find((k) => k.note === "Alice");
+    const bob = restored.find((k) => k.note === "Bob");
+    assert.ok(alice);
+    assert.ok(bob);
+    assert.equal(alice!.xpub, XPUB);
+    assert.equal(bob!.xpub, keyB.xpub);
+    assert.match(compileMiniscript(node), /A/);
   });
 
   it("reads bitbox scriptConfig json", () => {

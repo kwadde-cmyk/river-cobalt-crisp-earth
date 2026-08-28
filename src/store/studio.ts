@@ -7,6 +7,7 @@ import {
   collapseAliasKeys,
   emptyKey,
   extractKeysFromTree,
+  flattenKeysForLookup,
   groupKeysByFingerprint,
   nextKeyName,
   normalizeKeyEntry,
@@ -83,8 +84,10 @@ interface StudioState {
   reset: () => void;
 }
 
-function adoptImportedTree(node: MsNode, keys: KeyEntry[]) {
-  const grouped = groupKeysByFingerprint(keys);
+function adoptImportedTree(node: MsNode, keys: KeyEntry[], opts?: { preserveGroups?: boolean }) {
+  const grouped = opts?.preserveGroups
+    ? { keys: keys.map(normalizeKeyEntry), rename: new Map<string, string>() }
+    : groupKeysByFingerprint(keys);
   const renamed = grouped.rename.size
     ? mapKeyStrings(node, (tok) => grouped.rename.get(tok) ?? tok)
     : node;
@@ -417,11 +420,16 @@ export const useStudio = create<StudioState>()(
           try {
             const src = bundle.miniscript || bundle.descriptor;
             const parsed = parseAny(src);
-            const extracted = extractKeysFromTree(parsed.node, bundle.keys);
-            const byXpub = new Map(bundle.keys.filter((k) => k.xpub).map((k) => [k.xpub, k]));
-            const byName = new Map(bundle.keys.map((k) => [k.name, k]));
+            const extracted = extractKeysFromTree(parsed.node, flattenKeysForLookup(bundle.keys));
+            const byXpub = new Map(
+              flattenKeysForLookup(bundle.keys)
+                .filter((k) => k.xpub)
+                .map((k) => [k.xpub.match(/(?:xpub|tpub|ypub|zpub|vpub|Ypub|Zpub|Vpub)[1-9A-HJ-NP-Za-km-z]+/)?.[0] ?? k.xpub, k]),
+            );
+            const byName = new Map(flattenKeysForLookup(bundle.keys).map((k) => [k.name, k]));
             const keys = extracted.keys.map((k) => {
-              const hit = (k.xpub ? byXpub.get(k.xpub) : undefined) ?? byName.get(k.name);
+              const xid = k.xpub.match(/(?:xpub|tpub|ypub|zpub|vpub|Ypub|Zpub|Vpub)[1-9A-HJ-NP-Za-km-z]+/)?.[0] ?? k.xpub;
+              const hit = (xid ? byXpub.get(xid) : undefined) ?? byName.get(k.name);
               if (!hit) return k;
               return {
                 ...k,
@@ -429,9 +437,10 @@ export const useStudio = create<StudioState>()(
                 children: hit.children.length ? hit.children : k.children,
                 fingerprint: k.fingerprint || hit.fingerprint,
                 derivation: k.derivation || hit.derivation,
+                xpub: k.xpub || hit.xpub,
               };
             });
-            const adopted = adoptImportedTree(extracted.node, keys);
+            const adopted = adoptImportedTree(extracted.node, keys, { preserveGroups: true });
             mutate({
               ...adopted,
               ...(bundle.reuseKeys != null ? { reuseKeys: bundle.reuseKeys } : {}),
