@@ -326,7 +326,7 @@ describe("stages", () => {
         {
           id: "ck1",
           path: "48'/0'/1'/2'",
-          xpub: "xpub6C6nQwHaTbszB3GXfbJNNGYUmGQmAwb1zUfxCQ4QFJYpNaDw6P8vqQdPdFMv1eVqBtgvHXuiVMtobd6MwPkhBUFC14BHupS6aHiJvRoG9sK",
+          xpub: "xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsfTFUHCdrfp1bgwQ9xv5ski8PX9rL2dZXvgGDnw",
           fingerprint: "deadbeef",
           note: "A1",
         },
@@ -335,7 +335,7 @@ describe("stages", () => {
     const expanded = expandAliasKeys(root, [parent, emptyKey("B")], false);
     const a1 = expanded.find((k) => k.name === "A1");
     assert.equal(a1?.derivation, "48'/0'/1'/2'");
-    assert.ok(a1?.xpub.startsWith("xpub6C6n"));
+    assert.ok(a1?.xpub.startsWith("xpub68Gmy"));
   });
 
   it("infers required key plus OR and delayed branches", () => {
@@ -384,7 +384,7 @@ describe("stages", () => {
 
   it("groups same-fingerprint keys as master and child", () => {
     const childXpub =
-      "xpub6C6nQwHaTbszB3GXfbJNNGYUmGQmAwb1zUfxCQ4QFJYpNaDw6P8vqQdPdFMv1eVqBtgvHXuiVMtobd6MwPkhBUFC14BHupS6aHiJvRoG9sK";
+      "xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsfTFUHCdrfp1bgwQ9xv5ski8PX9rL2dZXvgGDnw";
     const grouped = groupKeysByFingerprint([
       { ...emptyKey("A"), fingerprint: "deadbeef", derivation: "48'/0'/0'/2'", xpub: XPUB },
       { ...emptyKey("B"), fingerprint: "DEADBEEF", derivation: "48'/0'/1'/2'", xpub: childXpub },

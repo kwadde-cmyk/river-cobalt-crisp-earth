@@ -230,11 +230,10 @@ export const useBitcoind = create<BitcoindState>()(
       },
     }),
     {
-      name: "scriptwerk-bitcoind-v2",
+      name: "scriptwerk-bitcoind-v3",
       partialize: (s) => ({
         url: s.url,
         username: s.username,
-        password: s.password,
         kind: s.kind,
       }),
     },

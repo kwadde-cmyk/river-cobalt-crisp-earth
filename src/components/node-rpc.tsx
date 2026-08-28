@@ -173,7 +173,7 @@ function NodeDialogBody() {
             placeholder={
               startos
                 ? "https://name.local:57521"
-                : `192.168.178.20  ·  Port ${port}`
+                : `192.168.1.20  ·  Port ${port}`
             }
             className="mt-1.5 font-mono text-xs"
           />

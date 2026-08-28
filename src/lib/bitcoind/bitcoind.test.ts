@@ -17,23 +17,23 @@ const XPUB =
 
 describe("bitcoind rpc helpers", () => {
   it("turns a LAN host into an http RPC url", () => {
-    assert.equal(normalizeRpcUrl("192.168.178.20", "mainnet"), "http://192.168.178.20:8332");
-    assert.equal(normalizeRpcUrl("192.168.178.20:18332"), "http://192.168.178.20:18332");
+    assert.equal(normalizeRpcUrl("192.168.1.20", "mainnet"), "http://192.168.1.20:8332");
+    assert.equal(normalizeRpcUrl("192.168.1.20:18332"), "http://192.168.1.20:18332");
     assert.equal(normalizeRpcUrl("127.0.0.1", "testnet"), "http://127.0.0.1:18332");
     assert.equal(normalizeRpcUrl("https://umbrel.local/"), "https://umbrel.local");
     assert.equal(defaultRpcPort("testnet"), 18332);
-    assert.equal(addressSpace("https://192.168.178.87:57521"), "local");
+    assert.equal(addressSpace("https://192.168.1.80:57521"), "local");
     assert.equal(addressSpace("http://127.0.0.1:8332"), "loopback");
-    assert.equal(looksLikeStartos("https://192.168.178.87:57521"), true);
+    assert.equal(looksLikeStartos("https://192.168.1.80:57521"), true);
     assert.equal(looksLikeStartos("https://abc.local:57521"), true);
-    assert.equal(isLanIpUrl("https://192.168.178.87:57521"), true);
+    assert.equal(isLanIpUrl("https://192.168.1.80:57521"), true);
     assert.equal(isLanIpUrl("https://abc.local:57521"), false);
   });
 
   it("detects CORS-blocked StartOS traces", () => {
     assert.equal(
       corsBlocked({
-        url: "https://capable-dosage.local:57521",
+        url: "https://node.local:57521",
         origin: "https://example.com",
         space: "local",
         ok: false,

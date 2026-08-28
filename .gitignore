@@ -3,3 +3,10 @@ node_modules/
 .github_repo
 .env
 .env.*
+deploy/.env
+artifacts/
+attachments/
+.vercel/
+screenshots/*.png
+screenshots/*.jpg
+screenshots/*.json

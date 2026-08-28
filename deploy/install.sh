@@ -3,6 +3,7 @@
 # Bitcoin-Node darf auf einer anderen Maschine liegen (oder später per Brücke).
 #
 #   ./deploy/install.sh --probe              # nur prüfen
+#   ./deploy/install.sh --dry-run            # Port/RPC zeigen, nichts starten
 #   ./deploy/install.sh --simulate raspi     # Beispiel-Homeserver
 #   ./deploy/install.sh                      # installieren (fragt Port, wenn Terminal)
 #   SCRIPTWERK_PORT=8081 BITCOIND_RPC_URL=https://node.local:57521 ./deploy/install.sh
@@ -15,6 +16,7 @@ SIM=""
 for arg in "$@"; do
   case "$arg" in
     --probe) MODE="probe" ;;
+    --dry-run) MODE="dry-run" ;;
     --simulate) SIM="raspi"; MODE="probe" ;;
     --simulate=*) SIM="${arg#*=}"; MODE="probe" ;;
     --help|-h)
@@ -40,7 +42,7 @@ SUGGEST="${SUGGEST:-8080}"
 if [[ "$MODE" == "probe" ]]; then
   echo "Nur Prüfung. Installation:  ./deploy/install.sh"
   echo "Gewünschter Port:           SCRIPTWERK_PORT=${SUGGEST} ./deploy/install.sh"
-  echo "Node woanders, z. B.:       BITCOIND_RPC_URL=https://capable-dosage.local:57521 \\"
+  echo "Node woanders, z. B.:       BITCOIND_RPC_URL=https://node.local:57521 \\"
   echo "                            BITCOIND_RPC_USER=scriptwerk BITCOIND_RPC_PASSWORD='…' \\"
   echo "                            SCRIPTWERK_PORT=${SUGGEST} ./deploy/install.sh"
   exit 0
@@ -67,6 +69,22 @@ if [[ -t 0 && -z "${BITCOIND_RPC_URL+x}" ]]; then
 fi
 
 ENV_FILE="$ROOT/deploy/.env"
+
+if [[ "$MODE" == "dry-run" ]]; then
+  echo "Dry-run — es wird nichts installiert oder gestartet."
+  echo "  SCRIPTWERK_PORT=${PORT}"
+  echo "  BITCOIND_RPC_URL=${RPC_URL:-<leer → Node-Brücke in der UI>}"
+  echo "  BITCOIND_RPC_USER=${RPC_USER:-<leer>}"
+  if need_cmd docker && (docker compose version >/dev/null 2>&1 || need_cmd docker-compose); then
+    echo "  Startweg: Docker Compose"
+  elif need_cmd node; then
+    echo "  Startweg: Node (kein Docker auf dieser Maschine)"
+  else
+    echo "  Startweg: fehlt — erst Docker oder Node installieren"
+  fi
+  exit 0
+fi
+
 cat > "$ENV_FILE" <<EOF
 SCRIPTWERK_PORT=${PORT}
 BITCOIND_RPC_URL=${RPC_URL}
