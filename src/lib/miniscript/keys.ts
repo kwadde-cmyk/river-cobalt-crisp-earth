@@ -49,13 +49,119 @@ export function normalizeKeyEntry(k: KeyEntry): KeyEntry {
 }
 
 export function nextKeyName(existing: string[]): string {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   for (const ch of alphabet) {
     if (!existing.includes(ch)) return ch;
   }
   let i = 1;
   while (existing.includes(`K${i}`)) i++;
   return `K${i}`;
+}
+
+export function compareKeyNames(a: string, b: string): number {
+  return a.localeCompare(b, "en", { numeric: true, sensitivity: "base" });
+}
+
+export function sequentialKeyNames(count: number): string[] {
+  const A = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const out: string[] = [];
+  for (let i = 0; i < count; i++) {
+    if (i < 26) {
+      out.push(A[i]!);
+      continue;
+    }
+    let x = i;
+    let s = "";
+    while (x >= 0) {
+      s = A[x % 26]! + s;
+      x = Math.floor(x / 26) - 1;
+    }
+    out.push(s);
+  }
+  return out;
+}
+
+export function orderMasterNames(stages: { keys: string[] }[], extra: { name: string }[] = []): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const s of stages) {
+    const chunk = [...new Set(s.keys.map((n) => baseKeyName(n)).filter(Boolean))]
+      .filter((n) => !seen.has(n))
+      .sort(compareKeyNames);
+    for (const n of chunk) {
+      seen.add(n);
+      out.push(n);
+    }
+  }
+  const leftover = extra
+    .map((k) => baseKeyName(k.name))
+    .filter((n) => n && !seen.has(n))
+    .sort(compareKeyNames);
+  for (const n of leftover) {
+    if (seen.has(n)) continue;
+    seen.add(n);
+    out.push(n);
+  }
+  return out;
+}
+
+export function sortKeyEntries(keys: KeyEntry[], stages: { keys: string[] }[]): KeyEntry[] {
+  const order = orderMasterNames(stages, keys);
+  const byName = new Map(keys.map((k) => [k.name, k]));
+  const out: KeyEntry[] = [];
+  const used = new Set<string>();
+  for (const n of order) {
+    const k = byName.get(n);
+    if (!k || used.has(k.id)) continue;
+    out.push(k);
+    used.add(k.id);
+  }
+  for (const k of keys) {
+    if (used.has(k.id)) continue;
+    out.push(k);
+  }
+  return out;
+}
+
+export function retokenKey(tok: string, rename: Map<string, string>): string {
+  if (rename.has(tok)) return rename.get(tok)!;
+  const base = baseKeyName(tok);
+  const next = rename.get(base);
+  if (!next) return tok;
+  return `${next}${tok.slice(base.length)}`;
+}
+
+export function relabelKeysFromA<S extends { keys: string[]; required?: string[] }>(
+  keys: KeyEntry[],
+  stages: S[],
+  root: MsNode | null,
+): { keys: KeyEntry[]; stages: S[]; root: MsNode | null } {
+  const order = orderMasterNames(stages, keys);
+  const letters = sequentialKeyNames(order.length);
+  const rename = new Map<string, string>();
+  order.forEach((old, i) => {
+    const next = letters[i]!;
+    if (old !== next) rename.set(old, next);
+  });
+  const mapTok = (tok: string) => retokenKey(tok, rename);
+  const nextStages = stages.map((s) => ({
+    ...s,
+    keys: [...s.keys.map(mapTok)].sort(compareKeyNames),
+    required: s.required?.map(mapTok),
+  }));
+  const nextKeys = sortKeyEntries(
+    keys.map((k) => ({
+      ...k,
+      name: mapTok(k.name),
+      children: k.children.map((c) => ({ ...c, note: c.note ? mapTok(c.note) : c.note })),
+    })),
+    nextStages,
+  );
+  return {
+    keys: nextKeys,
+    stages: nextStages,
+    root: root ? mapKeyStrings(root, mapTok) : null,
+  };
 }
 
 function approx(n: number, locale: Locale = "de"): string {

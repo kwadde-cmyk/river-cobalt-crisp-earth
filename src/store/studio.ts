@@ -10,8 +10,10 @@ import {
   groupKeysByFingerprint,
   nextKeyName,
   normalizeKeyEntry,
+  orderMasterNames,
   parseChildKey,
   parseKeyList,
+  relabelKeysFromA,
   type KeyEntry,
 } from "@/lib/miniscript/keys";
 import { buildOperator, wrapNode, type BuildParams } from "@/lib/miniscript/operators";
@@ -89,11 +91,12 @@ function adoptImportedTree(node: MsNode, keys: KeyEntry[]) {
   const stages = inferStages(renamed);
   const masters = stages.flatMap((s) => s.keys);
   const folded = masters.length ? collapseAliasKeys(grouped.keys, masters) : grouped.keys;
+  const labeled = relabelKeysFromA(folded, stages, renamed);
   return {
-    root: renamed,
-    selectedId: renamed.id,
-    keys: folded,
-    stages,
+    root: labeled.root ?? renamed,
+    selectedId: (labeled.root ?? renamed).id,
+    keys: labeled.keys,
+    stages: labeled.stages,
     importError: null as string | null,
   };
 }
@@ -163,7 +166,7 @@ function mergeKeyLists(current: KeyEntry[], incoming: KeyEntry[]): KeyEntry[] {
 }
 
 function keysForStages(stages: Stage[], current: KeyEntry[], network: "mainnet" | "testnet"): KeyEntry[] {
-  const names = [...new Set(stages.flatMap((s) => s.keys))];
+  const names = orderMasterNames(stages, current);
   const masters = new Set(names);
   const byName = new Map(current.map((k) => [k.name, k]));
   const out: KeyEntry[] = [];

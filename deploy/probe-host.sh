@@ -60,10 +60,17 @@ if [[ "$ARCH" == arm* || "$ARCH" == aarch64 ]] || [[ "$MODEL" == *Raspberry* ]];
 fi
 
 WEBS=()
+seen_web=""
 for pair in nginx:nginx apache2:apache2 apache2:httpd caddy:caddy lighttpd:lighttpd; do
   svc="${pair%%:*}"; bin="${pair##*:}"
   if svc_active "$svc" || has_cmd "$bin" || pkg_installed "$svc" || [[ -d "/etc/$svc" ]]; then
-    WEBS+=("$svc")
+    case " $seen_web " in
+      *" $svc "*) ;;
+      *)
+        WEBS+=("$svc")
+        seen_web+=" $svc"
+        ;;
+    esac
   fi
 done
 

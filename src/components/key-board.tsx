@@ -10,6 +10,7 @@ import {
   nextUnusedAccount,
   normalizeKeyEntry,
   parseChildKey,
+  sortKeyEntries,
   type KeyEntry,
   type KeyTreeNode,
 } from "@/lib/miniscript/keys";
@@ -47,7 +48,10 @@ export function KeyBoard({ fill = false }: { fill?: boolean }) {
   const details = keys.find((k) => k.id === detailsId) ?? null;
   const aliases = reuseAliasHints(stages, reuseKeys);
   const masters = new Set(stages.flatMap((s) => s.keys));
-  const visible = stages.length ? keys.filter((k) => !isDerivedAlias(k.name, masters)) : keys;
+  const visible = sortKeyEntries(
+    stages.length ? keys.filter((k) => !isDerivedAlias(k.name, masters)) : keys,
+    stages,
+  );
   const childPresent = visible.reduce((n, k) => n + k.children.filter((c) => c.xpub.trim()).length, 0);
   const childNeeded = reuseKeys
     ? childPresent

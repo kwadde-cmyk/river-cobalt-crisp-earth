@@ -16,9 +16,13 @@ import {
   keyTileLabel,
   tokenNeedsAction,
   nextUnusedAccount,
+  orderMasterNames,
   parseChildKey,
   parseKeyExpr,
   parseKeyList,
+  relabelKeysFromA,
+  sequentialKeyNames,
+  sortKeyEntries,
 } from "./keys.ts";
 import { parseAny } from "./parser.ts";
 import { compileStages, inferStages, stageFormula, stageHighlightIds } from "./stages.ts";
@@ -245,6 +249,26 @@ describe("keys", () => {
     assert.equal(tokenNeedsAction("A", [filled], false), false);
     assert.equal(tokenNeedsAction("A1", [filled], false), true);
     assert.equal(tokenNeedsAction("A", [empty], true), true);
+  });
+
+  it("orders masters by stage then A–Z and relabels from A", () => {
+    assert.deepEqual(sequentialKeyNames(3), ["A", "B", "C"]);
+    const stages = [
+      { keys: ["H", "F", "G"] },
+      { keys: ["C", "A"] },
+    ];
+    assert.deepEqual(orderMasterNames(stages), ["F", "G", "H", "A", "C"]);
+    const keys = ["H", "F", "G", "C", "A"].map((n) => emptyKey(n));
+    const { node } = parseAny("or_i(and_v(v:pk(A),pk(C)),multi(2,F,G,H))");
+    const labeled = relabelKeysFromA(keys, stages, node);
+    assert.deepEqual(labeled.keys.map((k) => k.name), ["A", "B", "C", "D", "E"]);
+    assert.deepEqual(labeled.stages[0]?.keys, ["A", "B", "C"]);
+    assert.deepEqual(labeled.stages[1]?.keys, ["D", "E"]);
+    assert.equal(compileMiniscript(labeled.root!), "or_i(and_v(v:pk(D),pk(E)),multi(2,A,B,C))");
+    assert.deepEqual(
+      sortKeyEntries(keys, stages).map((k) => k.name),
+      ["F", "G", "H", "A", "C"],
+    );
   });
 });
 
