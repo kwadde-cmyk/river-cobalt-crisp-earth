@@ -5,15 +5,19 @@ import {
   emptyKey,
   extractKeysFromTree,
   formatFingerprint,
+  nextKeyName,
   normalizeKeyEntry,
   parseKeyExpr,
+  type KeyChild,
   type KeyEntry,
 } from "./keys.ts";
 import { parseAny } from "./parser.ts";
+import { uid } from "../utils.ts";
 
 export interface Bip388Key {
   index: number;
   name: string;
+  label: string;
   fingerprint: string;
   derivation: string;
   xpub: string;
@@ -125,6 +129,7 @@ export function compileBip388(
   const policyKeys: Bip388Key[] = unique.map((k, index) => ({
     index,
     name: k.name,
+    label: k.note.trim() || k.name,
     fingerprint: formatFingerprint(k.fingerprint),
     derivation: (k.derivation || "").replace(/^m\//, ""),
     xpub: k.xpub.trim(),
@@ -186,6 +191,8 @@ export function formatLedgerJson(policy: Bip388Policy): string {
       descriptor_template: policy.template,
       keys: keyOrigins,
       keyOrigins,
+      keyNames: policy.keys.map((k) => k.label || k.name),
+      keyAliases: policy.keys.map((k) => k.name),
     },
     null,
     2,
@@ -238,6 +245,8 @@ export function formatBitboxJson(policy: Bip388Policy): string {
       rootFingerprint: k.fingerprint,
       keypath: k.derivation ? `m/${k.derivation.replace(/^m\//, "")}` : "",
       xpub: k.xpub,
+      name: k.label || k.name,
+      alias: k.name,
     }));
   return `${JSON.stringify(
     {
@@ -262,7 +271,10 @@ export function formatPolicyText(policy: Bip388Policy): string {
   const lines = [
     `BIP388 ${policy.name}`,
     policy.template,
-    ...policy.keys.map((k) => (k.origin ? `@${k.index} ${k.origin}` : `@${k.index} ${k.name}`)),
+    ...policy.keys.map((k) => {
+      const tag = k.label && k.label !== k.name ? `${k.label} ` : "";
+      return k.origin ? `@${k.index} ${tag}${k.origin}` : `@${k.index} ${tag}${k.name}`.trimEnd();
+    }),
   ];
   return lines.join("\n");
 }
@@ -331,6 +343,7 @@ function keyFromUnknown(v: unknown, index: number): Bip388Key | null {
     return {
       index,
       name,
+      label: name,
       fingerprint: formatFingerprint(parsed.fingerprint),
       derivation: parsed.derivation.replace(/^m\//, ""),
       xpub: parsed.xpub,
@@ -353,13 +366,20 @@ function keyFromUnknown(v: unknown, index: number): Bip388Key | null {
   const derivation = decodeKeypath(
     rec.keypath ?? rec.path ?? rec.derivation ?? rec.deriv ?? rec.bip32_path,
   );
+  const label =
+    firstString(rec, ["label", "note"]) ||
+    (firstString(rec, ["name"]) && !/^[A-Z]$|^K\d+$/.test(firstString(rec, ["name"]))
+      ? firstString(rec, ["name"])
+      : "");
   const name =
-    firstString(rec, ["name", "label", "note"]) ||
+    firstString(rec, ["alias", "slot"]) ||
+    (/^[A-Z]$|^K\d+$/.test(firstString(rec, ["name"])) ? firstString(rec, ["name"]) : "") ||
     `ABCDEFGHJKLMNPQRSTUVWXYZ`[index] ||
     `K${index + 1}`;
   return {
     index,
     name,
+    label: label || name,
     fingerprint: formatFingerprint(fp),
     derivation,
     xpub: xpubMatch,
@@ -413,6 +433,20 @@ function parseJsonPolicy(text: string): Bip388Policy | null {
   const keys = rawKeys
     .map((k, i) => keyFromUnknown(k, i))
     .filter((k): k is Bip388Key => Boolean(k));
+  const labels = Array.isArray(rec.keyNames) ? rec.keyNames : Array.isArray(rec.keyLabels) ? rec.keyLabels : null;
+  if (labels) {
+    keys.forEach((k, i) => {
+      const lab = labels[i];
+      if (typeof lab === "string" && lab.trim()) k.label = lab.trim();
+    });
+  }
+  const aliases = Array.isArray(rec.keyAliases) ? rec.keyAliases : null;
+  if (aliases) {
+    keys.forEach((k, i) => {
+      const a = aliases[i];
+      if (typeof a === "string" && a.trim()) k.name = a.trim();
+    });
+  }
   const name = firstString(rec, ["name", "label", "walletName"]) || "Scriptwerk";
   return { name: name.slice(0, 64), template, keys };
 }
@@ -445,11 +479,17 @@ function parseTextPolicy(text: string): Bip388Policy | null {
   for (const line of lines) {
     if (line === templateLine) continue;
     const labeled = line.match(/^@(\d+)\s+(.+)$/);
-    const raw = labeled ? labeled[2]! : line;
+    let raw = labeled ? labeled[2]! : line;
     if (!XPUB_RE.test(raw) && !raw.startsWith("[")) continue;
+    let label = "";
+    const named = raw.match(/^(?:"([^"]+)"|([A-Za-z][A-Za-z0-9 _-]{0,40}?))\s+(\[.+|(?:xpub|tpub|ypub|zpub|vpub|Ypub|Zpub|Vpub).+)$/);
+    if (named) {
+      label = (named[1] || named[2] || "").trim();
+      raw = named[3]!;
+    }
     const index = labeled ? Number(labeled[1]) : keys.length;
     const key = keyFromUnknown(raw, index);
-    if (key) keys[index] = { ...key, index };
+    if (key) keys[index] = { ...key, index, label: label || key.label };
   }
   return { name: name.slice(0, 64), template, keys: keys.filter(Boolean) };
 }
@@ -475,9 +515,10 @@ export function materializeWalletPolicy(
   const keys = extracted.keys.map((k) => {
     const hit = k.xpub ? byXpub.get(k.xpub) : undefined;
     if (!hit) return k;
+    const named = hit.label || hit.name;
     const note =
       k.note ||
-      (hit.name && !/^[A-Z]$/.test(hit.name) && !/^K\d+$/.test(hit.name) ? hit.name : "");
+      (named && !/^[A-Z]$/.test(named) && !/^K\d+$/.test(named) ? named : "");
     return {
       ...k,
       fingerprint: k.fingerprint || hit.fingerprint,
@@ -486,4 +527,105 @@ export function materializeWalletPolicy(
     };
   });
   return { node: extracted.node, keys };
+}
+
+export function formatScriptwerkJson(opts: {
+  name?: string;
+  miniscript: string;
+  descriptor: string;
+  keys: KeyEntry[];
+  reuseKeys: boolean;
+  network: "mainnet" | "testnet";
+}): string {
+  return `${JSON.stringify(
+    {
+      format: "scriptwerk",
+      version: 1,
+      name: opts.name || "Scriptwerk",
+      miniscript: opts.miniscript,
+      descriptor: opts.descriptor,
+      reuseKeys: opts.reuseKeys,
+      network: opts.network,
+      keys: opts.keys.map((k) => ({
+        name: k.name,
+        note: k.note,
+        fingerprint: k.fingerprint,
+        derivation: k.derivation,
+        xpub: k.xpub,
+        childPath: k.childPath,
+        children: k.children.map((c) => ({
+          path: c.path,
+          xpub: c.xpub,
+          fingerprint: c.fingerprint,
+          note: c.note,
+        })),
+      })),
+    },
+    null,
+    2,
+  )}\n`;
+}
+
+export function parseScriptwerkBundle(text: string): {
+  name: string;
+  miniscript: string;
+  descriptor: string;
+  keys: KeyEntry[];
+  reuseKeys?: boolean;
+  network?: "mainnet" | "testnet";
+} | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  const rec = asRecord(parsed);
+  if (!rec) return null;
+  if (firstString(rec, ["format"]) !== "scriptwerk") return null;
+  const miniscript = firstString(rec, ["miniscript", "policy"]);
+  const descriptor = firstString(rec, ["descriptor"]);
+  if (!miniscript && !descriptor) return null;
+  if (!Array.isArray(rec.keys)) return null;
+  const keys: KeyEntry[] = [];
+  const used: string[] = [];
+  for (const raw of rec.keys) {
+    const k = asRecord(raw);
+    if (!k) continue;
+    const name = firstString(k, ["name", "alias"]) || nextKeyName(used);
+    used.push(name);
+    const kids: KeyChild[] = Array.isArray(k.children)
+      ? k.children.flatMap((c) => {
+          const ch = asRecord(c);
+          if (!ch) return [];
+          return [
+            {
+              id: uid("ck"),
+              path: firstString(ch, ["path", "derivation"]),
+              xpub: firstString(ch, ["xpub"]),
+              fingerprint: firstString(ch, ["fingerprint", "fp"]),
+              note: firstString(ch, ["note", "label", "alias"]),
+            },
+          ];
+        })
+      : [];
+    keys.push({
+      ...emptyKey(name),
+      note: firstString(k, ["note", "label"]),
+      fingerprint: firstString(k, ["fingerprint", "fp"]),
+      derivation: firstString(k, ["derivation", "path"]) || emptyKey(name).derivation,
+      xpub: firstString(k, ["xpub"]),
+      childPath: firstString(k, ["childPath"]) || "<0;1>/*",
+      children: kids,
+    });
+  }
+  const network = firstString(rec, ["network"]);
+  return {
+    name: firstString(rec, ["name"]) || "Scriptwerk",
+    miniscript,
+    descriptor,
+    keys,
+    reuseKeys: typeof rec.reuseKeys === "boolean" ? rec.reuseKeys : undefined,
+    network: network === "testnet" || network === "mainnet" ? network : undefined,
+  };
 }

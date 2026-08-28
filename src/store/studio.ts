@@ -19,7 +19,7 @@ import {
 import { buildOperator, wrapNode, type BuildParams } from "@/lib/miniscript/operators";
 import { parseAny } from "@/lib/miniscript/parser";
 import { compileStages, defaultStages, inferStages, isDerivedAlias, type Stage } from "@/lib/miniscript/stages";
-import { materializeWalletPolicy, parseWalletPolicy } from "@/lib/miniscript/bip388";
+import { materializeWalletPolicy, parseScriptwerkBundle, parseWalletPolicy } from "@/lib/miniscript/bip388";
 import { isLocale, localizeMessage, t, type Locale } from "@/lib/i18n";
 
 type Snapshot = {
@@ -412,6 +412,38 @@ export const useStudio = create<StudioState>()(
         });
       },
       importText: (text) => {
+        const bundle = parseScriptwerkBundle(text);
+        if (bundle) {
+          try {
+            const src = bundle.miniscript || bundle.descriptor;
+            const parsed = parseAny(src);
+            const extracted = extractKeysFromTree(parsed.node, bundle.keys);
+            const byXpub = new Map(bundle.keys.filter((k) => k.xpub).map((k) => [k.xpub, k]));
+            const byName = new Map(bundle.keys.map((k) => [k.name, k]));
+            const keys = extracted.keys.map((k) => {
+              const hit = (k.xpub ? byXpub.get(k.xpub) : undefined) ?? byName.get(k.name);
+              if (!hit) return k;
+              return {
+                ...k,
+                note: hit.note || k.note,
+                children: hit.children.length ? hit.children : k.children,
+                fingerprint: k.fingerprint || hit.fingerprint,
+                derivation: k.derivation || hit.derivation,
+              };
+            });
+            const adopted = adoptImportedTree(extracted.node, keys);
+            mutate({
+              ...adopted,
+              ...(bundle.reuseKeys != null ? { reuseKeys: bundle.reuseKeys } : {}),
+              ...(bundle.network ? { network: bundle.network } : {}),
+            });
+          } catch (e) {
+            set({
+              importError: e instanceof Error ? e.message : t(get().locale, "import.fail"),
+            });
+          }
+          return;
+        }
         const wallet = parseWalletPolicy(text);
         if (wallet) {
           try {

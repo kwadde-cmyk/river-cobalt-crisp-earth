@@ -1,3 +1,5 @@
+import { checksumOf, coreCanonicalBody, stripChecksum } from "../miniscript/checksum.ts";
+
 export interface BitcoindConfig {
   url: string;
   username: string;
@@ -14,6 +16,8 @@ export interface NodeProbe {
 export interface NodeValidateResult {
   descriptor: string;
   checksum: string;
+  exportChecksum: string;
+  checksumNote: "match" | "receive" | "differ";
   isrange: boolean;
   issolvable: boolean;
   hasprivatekeys: boolean;
@@ -262,7 +266,8 @@ export async function validateOnNode(
   config: BitcoindConfig,
   descriptor: string,
 ): Promise<NodeValidateResult> {
-  const payload = descriptor.includes("#") ? descriptor.slice(0, descriptor.lastIndexOf("#")) : descriptor;
+  const payload = stripChecksum(descriptor);
+  const exportChecksum = checksumOf(payload);
   const info = (await jsonRpc(config, "getdescriptorinfo", [payload])) as {
     descriptor: string;
     checksum: string;
@@ -270,6 +275,15 @@ export async function validateOnNode(
     issolvable: boolean;
     hasprivatekeys: boolean;
   };
+  const coreDesc = info.descriptor || payload;
+  const coreCs = checksumOf(coreDesc) || info.checksum;
+  const inputCs = info.checksum || exportChecksum;
+  const coreBody = stripChecksum(coreDesc);
+  const algoOk = inputCs === exportChecksum || coreCs === exportChecksum;
+  const sameBody = coreBody === payload;
+  let checksumNote: NodeValidateResult["checksumNote"] = "differ";
+  if (sameBody && algoOk) checksumNote = "match";
+  else if (algoOk || coreBody === coreCanonicalBody(payload)) checksumNote = "receive";
   let addresses: string[] = [];
   let deriveError: string | undefined;
   try {
@@ -279,8 +293,10 @@ export async function validateOnNode(
     deriveError = e instanceof Error ? e.message : "node.err.derive";
   }
   return {
-    descriptor: info.descriptor,
-    checksum: info.checksum,
+    descriptor: coreDesc,
+    checksum: coreCs,
+    exportChecksum,
+    checksumNote,
     isrange: Boolean(info.isrange),
     issolvable: Boolean(info.issolvable),
     hasprivatekeys: Boolean(info.hasprivatekeys),

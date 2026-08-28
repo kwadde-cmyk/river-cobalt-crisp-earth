@@ -473,7 +473,18 @@ function CheckResult() {
         {lastCheck.isrange ? <Badge>{t("node.range")}</Badge> : null}
         <Badge variant="default">{lastCheck.source === "core" ? t("node.sourceCore") : t("node.sourceDemo")}</Badge>
       </div>
-      <p className="mt-1.5 font-mono text-2xs break-all text-fg">#{lastCheck.checksum}</p>
+      <p className="mt-1.5 font-mono text-2xs break-all text-fg">
+        {lastCheck.checksumNote === "match"
+          ? t("node.check.csExport", { cs: `#${lastCheck.exportChecksum || lastCheck.checksum}` })
+          : `${t("node.check.csExport", { cs: `#${lastCheck.exportChecksum || lastCheck.checksum}` })}  ·  ${t("node.check.csCore", { cs: `#${lastCheck.checksum}` })}`}
+      </p>
+      <p className="mt-1 text-2xs text-pretty text-fg-muted">
+        {lastCheck.checksumNote === "match"
+          ? t("node.check.csMatch")
+          : lastCheck.checksumNote === "receive"
+            ? t("node.check.csReceive")
+            : t("node.check.csDiffer")}
+      </p>
       <p className="mt-1 max-h-24 overflow-y-auto">
         <ClipText value={lastCheck.descriptor} className="text-2xs text-fg-muted" />
       </p>

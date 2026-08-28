@@ -305,22 +305,16 @@ export function parseKeyList(text: string): KeyEntry[] | null {
   const keys: KeyEntry[] = [];
   const used: string[] = [];
   for (const line of lines) {
-    const named = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s+(.+)$/);
-    let name: string | undefined;
-    let expr = line;
-    if (named) {
-      const parsedRest = parseKeyExpr(named[2]!);
-      if (parsedRest.kind !== "alias") {
-        name = named[1];
-        expr = named[2]!;
-      }
-    }
+    const parts = splitNamedKeyLine(line);
+    if (!parts) return null;
+    const { name, note, expr } = parts;
     const parsed = parseKeyExpr(expr);
     if (parsed.kind === "alias") return null;
     const finalName = name ?? nextKeyName(used);
     used.push(finalName);
     keys.push({
       ...emptyKey(finalName),
+      note: note || "",
       fingerprint: parsed.fingerprint,
       derivation: parsed.derivation || emptyKey(finalName).derivation,
       xpub: parsed.xpub,
@@ -329,6 +323,43 @@ export function parseKeyList(text: string): KeyEntry[] | null {
     });
   }
   return keys.length ? keys : null;
+}
+
+function splitNamedKeyLine(line: string): { name?: string; note: string; expr: string } | null {
+  const named = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s+(.+)$/);
+  if (!named) {
+    const parsed = parseKeyExpr(line);
+    if (parsed.kind === "alias") return null;
+    return { note: "", expr: line };
+  }
+  let rest = named[2]!;
+  let note = "";
+  const quoted = rest.match(/^"([^"]+)"\s+(.+)$/);
+  if (quoted) {
+    note = quoted[1]!;
+    rest = quoted[2]!;
+  } else if (parseKeyExpr(rest).kind === "alias") {
+    const word = rest.match(/^(\S+)\s+(\[.+|.+)$/);
+    if (!word || parseKeyExpr(word[2]!).kind === "alias") return null;
+    note = word[1]!;
+    rest = word[2]!;
+  }
+  if (parseKeyExpr(rest).kind === "alias") return null;
+  return { name: named[1], note, expr: rest };
+}
+
+export function formatKeyList(keys: KeyEntry[]): string {
+  return keys
+    .filter((k) => k.xpub.trim() || k.fingerprint)
+    .map((k) => {
+      const alias = k.name;
+      const label = k.note.trim() && k.note.trim() !== alias ? k.note.trim() : "";
+      const expr = k.xpub.includes("[")
+        ? k.xpub
+        : `[${k.fingerprint || "00000000"}/${(k.derivation || "").replace(/^m\//, "")}]${k.xpub}${k.childPath ? `/${k.childPath.replace(/^\//, "")}` : ""}`;
+      return label ? `${alias} "${label}" ${expr}` : `${alias} ${expr}`;
+    })
+    .join("\n");
 }
 
 export function extractKeysFromTree(
@@ -749,7 +780,7 @@ export function buildKeyTree(
         },
         ...relativeKids.map((c) => ({
           label: c.path,
-          hint: c.note || (c.xpub ? "Child-xpub" : undefined),
+          hint: [c.note, c.xpub].filter(Boolean).join(" · ") || undefined,
           last: false,
           children: [] as KeyTreeNode[],
         })),
@@ -759,7 +790,7 @@ export function buildKeyTree(
       account,
       ...absoluteKids.map((c) => ({
         label: c.path.replace(/^m\//, ""),
-        hint: c.note || (c.xpub ? "Account" : formatFingerprint(c.fingerprint) || undefined),
+        hint: [c.note, c.xpub || formatFingerprint(c.fingerprint)].filter(Boolean).join(" · ") || undefined,
         last: false,
         children: [] as KeyTreeNode[],
       })),

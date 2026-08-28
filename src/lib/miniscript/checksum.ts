@@ -53,6 +53,33 @@ export function descsumCreate(s: string): string {
   return out;
 }
 
+export function stripChecksum(s: string): string {
+  const hash = s.lastIndexOf("#");
+  if (hash >= 0 && /^[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{8}$/.test(s.slice(hash + 1))) {
+    return s.slice(0, hash);
+  }
+  return s;
+}
+
+export function checksumOf(s: string): string {
+  const raw = stripChecksum(s);
+  const withCs = descsumCreate(raw);
+  const hash = withCs.lastIndexOf("#");
+  return hash >= 0 ? withCs.slice(hash + 1) : "";
+}
+
+/** Bitcoin Core getdescriptorinfo ToString() keeps the first multipath branch. */
+export function coreCanonicalBody(s: string): string {
+  return stripChecksum(s)
+    .replaceAll("/<0;1>/", "/0/")
+    .replaceAll("/<1;0>/", "/0/")
+    .replace(/\[([^\]]*)\]/g, (_m, inner: string) => `[${inner.replace(/h/g, "'")}]`);
+}
+
+export function coreCanonicalDescriptor(s: string): string {
+  return descsumCreate(coreCanonicalBody(s));
+}
+
 export function descsumCheck(s: string): boolean {
   const hash = s.lastIndexOf("#");
   if (hash < 0 || s.length - hash - 1 !== 8) return false;

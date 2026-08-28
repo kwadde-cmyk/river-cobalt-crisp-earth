@@ -209,7 +209,13 @@ export const useBitcoind = create<BitcoindState>()(
           }
           set({
             error: null,
-            lastCheck: { ...local.info, addresses: [], source: "demo" },
+            lastCheck: {
+              ...local.info,
+              addresses: [],
+              exportChecksum: local.info.checksum,
+              checksumNote: "match",
+              source: "demo",
+            },
           });
           return;
         }

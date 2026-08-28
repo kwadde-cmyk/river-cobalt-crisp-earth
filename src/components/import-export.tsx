@@ -5,6 +5,7 @@ import {
   formatBitboxJson,
   formatLedgerJson,
   formatPolicyText,
+  formatScriptwerkJson,
   type Bip388CompileResult,
 } from "@/lib/miniscript/bip388";
 import { useStudio } from "@/store/studio";
@@ -33,6 +34,7 @@ export function ImportExportBar() {
   const root = useStudio((s) => s.root);
   const keys = useStudio((s) => s.keys);
   const reuseKeys = useStudio((s) => s.reuseKeys);
+  const network = useStudio((s) => s.network);
   const importText = useStudio((s) => s.importText);
   const importError = useStudio((s) => s.importError);
   const reset = useStudio((s) => s.reset);
@@ -75,6 +77,17 @@ export function ImportExportBar() {
     download("scriptwerk.miniscript.txt", compiled.miniscript);
     download("scriptwerk.descriptor.txt", compiled.descriptor);
     download("scriptwerk.bsms", compileBsms(compiled.descriptor));
+    download(
+      "scriptwerk.json",
+      formatScriptwerkJson({
+        name: walletName,
+        miniscript: compiled.miniscript,
+        descriptor: compiled.descriptor,
+        keys,
+        reuseKeys,
+        network,
+      }),
+    );
     if (bip?.ok) {
       download("scriptwerk-ledger.json", formatLedgerJson(bip.policy));
       download("scriptwerk-bitbox.json", formatBitboxJson(bip.policy));

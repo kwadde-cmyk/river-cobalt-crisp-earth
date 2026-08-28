@@ -131,7 +131,7 @@ export function KeyBoard({ fill = false }: { fill?: boolean }) {
         {visible.length === 0 ? (
           <p className="py-2 text-xs text-fg-muted">{t("keys.empty")}</p>
         ) : (
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex w-full flex-col gap-1.5">
             {visible.map((k) => (
               <KeyTile
                 key={k.id}
@@ -209,7 +209,7 @@ function KeyTile({
         aria-expanded={false}
         aria-label={needsAction ? t("keys.needAction", { name: entry.name }) : undefined}
         onClick={onToggle}
-        className={`inline-flex h-10 max-w-52 items-center gap-1.5 rounded-md border px-2.5 text-left text-xs transition-colors duration-150 ${tileClass}`}
+        className={`flex h-10 w-full items-center gap-1.5 rounded-md border px-2.5 text-left text-xs transition-colors duration-150 ${tileClass}`}
       >
         <span className={`min-w-0 truncate ${/^[0-9a-f]{8}$/.test(label) || label === entry.name ? "font-mono" : ""}`}>
           {label}
@@ -232,7 +232,7 @@ function KeyTile({
       aria-expanded={true}
       aria-label={needsAction ? t("keys.needAction", { name: entry.name }) : undefined}
       onClick={onToggle}
-      className={`w-full basis-full rounded-xl border p-3 text-left transition-colors duration-150 ${tileClass}`}
+      className={`w-full rounded-xl border p-3 text-left transition-colors duration-150 ${tileClass}`}
     >
       <div className="flex items-baseline justify-between gap-2">
         <p className="truncate text-sm text-fg">{label}</p>
@@ -317,13 +317,11 @@ function KeyTreeView({
   const kids = node.children.filter((c) => c.label.trim());
   const warn = Boolean(alerts?.has(node.label));
   return (
-    <div className={depth === 0 ? undefined : "ml-1.5 border-l border-border pl-2.5"}>
-      <p className={`font-mono text-2xs leading-5 ${warn ? "text-danger" : "text-fg"}`}>
-        {node.label}
-        {node.hint ? (
-          <span className={`ml-2 ${warn ? "text-danger" : "text-fg-muted"}`}>{node.hint}</span>
-        ) : null}
-      </p>
+    <div className={depth === 0 ? "w-full" : "ml-0 w-full border-l border-border pl-3"}>
+      <p className={`break-all font-mono text-xs leading-5 ${warn ? "text-danger" : "text-fg"}`}>{node.label}</p>
+      {node.hint ? (
+        <p className={`break-all font-mono text-2xs ${warn ? "text-danger" : "text-fg-muted"}`}>{node.hint}</p>
+      ) : null}
       {kids.map((c, i) => (
         <KeyTreeView key={`${c.label}-${i}`} node={c} depth={depth + 1} alerts={alerts} />
       ))}
@@ -432,7 +430,7 @@ function KeyImportDialog({
 
   return (
     <Dialog open={open} onOpenChange={openDetailsFrom}>
-      <DialogContent className="flex max-h-[min(720px,calc(100dvh-2rem))] w-[min(520px,calc(100vw-1.5rem))] flex-col overflow-hidden">
+      <DialogContent className="flex max-h-[min(720px,calc(100dvh-2rem))] w-[min(720px,calc(100vw-1rem))] flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>
             {keyTileLabel(entry)}
@@ -566,20 +564,27 @@ function KeyImportDialog({
                   ) : null}
                 </ImportPane>
                 {entry.children.length ? (
-                  <ul className="space-y-1.5">
+                  <ul className="w-full space-y-1.5">
                     {entry.children.map((c) => (
                       <li
                         key={c.id}
-                        className="flex items-center justify-between gap-2 rounded-md border border-border bg-elevated px-2.5 py-1.5"
+                        className="flex w-full items-start gap-2 rounded-md border border-border bg-elevated px-2.5 py-2"
                       >
-                        <span className="truncate font-mono text-2xs text-fg">
-                          {c.note ? `${c.note} · ` : ""}
-                          {c.path}
-                          {c.xpub ? " · xpub" : ""}
+                        <span className="min-w-0 flex-1 space-y-0.5">
+                          <span className="block font-mono text-xs text-fg">
+                            {c.note ? `${c.note} · ` : ""}
+                            {c.path}
+                          </span>
+                          {c.fingerprint ? (
+                            <span className="block font-mono text-2xs text-fg-muted">{c.fingerprint}</span>
+                          ) : null}
+                          <span className="block break-all font-mono text-2xs text-fg-muted">
+                            {c.xpub || "—"}
+                          </span>
                         </span>
                         <button
                           type="button"
-                          className="rounded-md p-1 text-fg-muted hover:bg-muted hover:text-fg"
+                          className="shrink-0 rounded-md p-1 text-fg-muted hover:bg-muted hover:text-fg"
                           onClick={() => removeChild(entry.id, c.id)}
                           aria-label={t("keys.childRemove")}
                         >
@@ -598,7 +603,7 @@ function KeyImportDialog({
           </TabsContent>
           <TabsContent value="details" className="min-h-0 flex-1 space-y-3 overflow-auto">
             <Field label={t("keys.detailOf")}>
-              <div className="flex flex-wrap gap-1">
+              <div className="flex w-full flex-col gap-1">
                 <button
                   type="button"
                   aria-pressed={detailId === "master"}
@@ -612,7 +617,7 @@ function KeyImportDialog({
                       childPath: entry.childPath,
                     });
                   }}
-                  className={`h-8 rounded-full border px-3 text-xs ${
+                  className={`h-9 w-full rounded-md border px-3 text-left text-xs ${
                     detailId === "master"
                       ? "border-border-strong bg-muted text-fg"
                       : "border-border text-fg-muted"
@@ -634,7 +639,7 @@ function KeyImportDialog({
                         note: c.note,
                       });
                     }}
-                    className={`h-8 max-w-40 truncate rounded-full border px-3 font-mono text-xs ${
+                    className={`h-9 w-full truncate rounded-md border px-3 text-left font-mono text-xs ${
                       detailId === c.id
                         ? "border-border-strong bg-muted text-fg"
                         : "border-border text-fg-muted"
@@ -671,8 +676,8 @@ function KeyImportDialog({
                   />
                 </Field>
                 <Field label="xpub">
-                  <Input
-                    className="font-mono text-xs"
+                  <Textarea
+                    className="min-h-24 w-full break-all"
                     placeholder="xpub…"
                     value={detailDraft.xpub}
                     onChange={(e) => setDetailDraft((d) => ({ ...d, xpub: e.target.value }))}
@@ -723,8 +728,8 @@ function KeyImportDialog({
                   />
                 </Field>
                 <Field label="xpub">
-                  <Input
-                    className="font-mono text-xs"
+                  <Textarea
+                    className="min-h-24 w-full break-all"
                     placeholder="xpub…"
                     value={childDetail.xpub}
                     onChange={(e) => setChildDetail((d) => ({ ...d, xpub: e.target.value }))}
@@ -862,7 +867,7 @@ function ImportPane({
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-1">
+    <div className="w-full space-y-1">
       <Label>{label}</Label>
       {children}
     </div>

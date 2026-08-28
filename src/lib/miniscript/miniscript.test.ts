@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { descsumCheck, descsumCreate } from "./checksum.ts";
+import { checksumOf, coreCanonicalBody, descsumCheck, descsumCreate, stripChecksum } from "./checksum.ts";
 import { compileDescriptor, compileMiniscript, expandAliasKeys } from "./compile.ts";
 import { explainPolicy } from "./explain.ts";
 import {
@@ -11,6 +11,7 @@ import {
   emptyKey,
   extractKeysFromTree,
   formatBip32Path,
+  formatKeyList,
   keyHeadline,
   keyNeedsAction,
   keyTileLabel,
@@ -30,7 +31,10 @@ import {
   compileBip388,
   formatBitboxJson,
   formatLedgerJson,
+  formatPolicyText,
+  formatScriptwerkJson,
   materializeWalletPolicy,
+  parseScriptwerkBundle,
   parseWalletPolicy,
   walletPolicyToDescriptor,
 } from "./bip388.ts";
@@ -75,6 +79,15 @@ describe("checksum", () => {
       "e48zzw02",
     );
   });
+
+  it("gives Core a different checksum for the receive-only path", () => {
+    const body = "wsh(pk([deadbeef/48'/0'/0'/2']xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5hqK5Gb4u1Q2ZbQW2kfykAPzh9RQQJwYvNUbaMhEaKfLUWuBvYJMTx5N/<0;1>/*))";
+    const recv = coreCanonicalBody(body);
+    assert.equal(recv.includes("/<0;1>/"), false);
+    assert.equal(recv.includes("/0/"), true);
+    assert.notEqual(checksumOf(body), checksumOf(recv));
+    assert.equal(stripChecksum(descsumCreate(body)), body);
+  });
 });
 
 describe("keys", () => {
@@ -103,6 +116,19 @@ describe("keys", () => {
     assert.equal(list![0]?.xpub, XPUB);
     assert.equal(list![1]?.name, "B");
     assert.equal(list![1]?.fingerprint, "aabbccdd");
+  });
+
+  it("roundtrips key display names in a list", () => {
+    const line = formatKeyList([
+      { ...emptyKey("A"), note: "Alice", fingerprint: "deadbeef", derivation: "48'/0'/0'/2'", xpub: XPUB },
+    ]);
+    assert.match(line, /Alice/);
+    const list = parseKeyList(line);
+    assert.equal(list?.[0]?.name, "A");
+    assert.equal(list?.[0]?.note, "Alice");
+    const quoted = parseKeyList(`B "Coldcard" [aabbccdd/48'/0'/0'/2']${XPUB}/<0;1>/*`);
+    assert.equal(quoted?.[0]?.name, "B");
+    assert.equal(quoted?.[0]?.note, "Coldcard");
   });
 
   it("applies origin material onto an existing alias", () => {
@@ -465,6 +491,32 @@ describe("bip388", () => {
     assert.equal(compileMiniscript(node), "multi(2,A,B)");
     assert.equal(keys[0]?.xpub, XPUB);
     assert.equal(keys[0]?.fingerprint.toLowerCase(), "deadbeef");
+  });
+
+  it("transports key labels through policy text and scriptwerk json", () => {
+    const { root } = compileStages([{ id: "s1", delay: 0, k: 2, keys: ["A", "B"] }]);
+    const keys = [
+      { ...keyA, note: "Alice" },
+      { ...keyB, note: "Bob" },
+    ];
+    const compiled = compileBip388(root, keys);
+    assert.equal(compiled.policy.keys[0]?.label, "Alice");
+    const text = formatPolicyText(compiled.policy);
+    assert.match(text, /Alice/);
+    const parsed = parseWalletPolicy(text);
+    assert.equal(parsed?.keys[0]?.label, "Alice");
+    const { keys: restored } = materializeWalletPolicy(parsed!, []);
+    assert.equal(restored.find((k) => k.xpub === XPUB)?.note, "Alice");
+    const json = formatScriptwerkJson({
+      miniscript: compileMiniscript(root),
+      descriptor: "wsh(multi(2,A,B))",
+      keys,
+      reuseKeys: false,
+      network: "mainnet",
+    });
+    const bundle = parseScriptwerkBundle(json);
+    assert.equal(bundle?.keys[0]?.note, "Alice");
+    assert.equal(bundle?.keys[1]?.note, "Bob");
   });
 
   it("reads bitbox scriptConfig json", () => {
