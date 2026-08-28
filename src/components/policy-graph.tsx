@@ -53,7 +53,7 @@ export function PolicyGraph() {
   }, [layout.boxes, selectedId, highlight]);
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col">
+    <div className="relative flex h-full min-h-0 w-full min-w-0 flex-col">
       {activeStage ? (
         <div className="pointer-events-none absolute top-3 left-3 z-10 rounded-full bg-primary px-3 py-1 font-mono text-2xs text-primary-foreground shadow-md">
           {t("graph.stagePath", { n: stageIndex + 1 })}

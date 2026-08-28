@@ -36,6 +36,9 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     pointer-events: auto !important;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
   }
 
   body {
@@ -43,6 +46,10 @@
     color: var(--color-fg);
     font-family: var(--font-sans);
     pointer-events: auto !important;
+    width: 100%;
+    max-width: 100%;
+    min-height: 100dvh;
+    overflow-x: hidden;
   }
 
   [data-radix-dialog-overlay][data-state="closed"],

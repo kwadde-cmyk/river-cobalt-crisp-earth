@@ -68,34 +68,46 @@ export function StudioShell() {
     <TooltipProvider delayDuration={200}>
       <KeyDatalist />
       <Toaster theme="dark" position="bottom-center" />
-      <div className="flex h-dvh flex-col overflow-hidden bg-bg text-fg">
-        <header className="relative z-30 shrink-0 border-b border-border" style={{ touchAction: "manipulation" }}>
-          <div className="flex flex-col gap-2 lg:flex-row lg:items-stretch">
-            <div className="min-w-0 flex-1 overflow-hidden px-2 pt-3 lg:px-3">
+      <div className="flex h-dvh w-full min-w-0 flex-col overflow-hidden bg-bg text-fg">
+        <header className="relative z-30 shrink-0 border-b border-border bg-[#0b0c0e]" style={{ touchAction: "manipulation" }}>
+          <div className="relative h-20 w-full overflow-hidden sm:h-24 lg:h-[7.25rem]">
+            <div className="pointer-events-none absolute inset-y-0 left-0 w-[6.75rem] overflow-hidden sm:w-36 lg:w-[11.5rem]">
               <img
-                src="/miniscript-banner.jpg?v=4"
-                alt="Scriptwerk — Miniscript Studio"
-                className="h-16 w-auto max-w-full object-contain object-left md:h-28 lg:h-36"
+                src="/miniscript-banner.jpg?v=5"
+                alt=""
+                className="h-full w-auto max-w-none object-cover object-left"
               />
-              <h1 className="sr-only">Scriptwerk — Miniscript Studio</h1>
             </div>
-            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 px-3 pb-2 lg:max-w-lg lg:items-end lg:py-2.5">
+            <div className="absolute top-1.5 right-3 z-10 text-right sm:top-2 lg:top-2 lg:right-4">
+              <p className="font-display text-[1.2rem] font-semibold tracking-[0.2em] text-fg sm:text-2xl lg:text-[1.95rem] lg:tracking-[0.24em]">
+                SCRIPTWERK
+              </p>
+              <p className="mt-0.5 text-[0.55rem] font-medium tracking-[0.3em] text-fg-muted uppercase sm:text-[0.65rem] lg:text-[0.72rem] lg:tracking-[0.36em]">
+                Miniscript Studio
+              </p>
+            </div>
+            <div className="absolute right-3 bottom-2 z-20 hidden lg:flex flex-wrap items-center justify-end gap-2">
               <ImportExportBar />
               <LangSwitch locale={locale} setLocale={setLocale} label={t("header.language")} />
             </div>
           </div>
+          <div className="flex flex-wrap items-center justify-end gap-2 px-3 py-2 lg:hidden">
+            <ImportExportBar />
+            <LangSwitch locale={locale} setLocale={setLocale} label={t("header.language")} />
+          </div>
+          <h1 className="sr-only">Scriptwerk — Miniscript Studio</h1>
         </header>
 
         <MountWhenVisible
           dataLayout="desktop"
-          className="hidden min-h-0 flex-1 overflow-hidden lg:flex"
+          className="hidden min-h-0 w-full min-w-0 flex-1 overflow-hidden lg:flex"
         >
           <DesktopStudio />
         </MountWhenVisible>
 
         <MountWhenVisible
           dataLayout="mobile"
-          className="flex min-h-0 flex-1 overflow-hidden lg:hidden"
+          className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden lg:hidden"
         >
           <MobileStudioTabs />
         </MountWhenVisible>
@@ -247,34 +259,36 @@ function MobileStudioTabs() {
   }, [selectedStageId]);
 
   return (
-    <Tabs value={tab} onValueChange={setTab} className="flex h-full flex-col px-3 py-3">
-      <TabsList className="relative z-10 w-full shrink-0" style={{ touchAction: "manipulation" }}>
-        <TabsTrigger value="stages" className="flex-1 px-2 text-xs">
-          {t("tabs.stages")}
-        </TabsTrigger>
-        <TabsTrigger value="tree" className="flex-1 px-2 text-xs">
-          {t("tabs.tree")}
-        </TabsTrigger>
-        <TabsTrigger value="keys" className="flex-1 px-2 text-xs">
-          {t("tabs.keys")}
-        </TabsTrigger>
-        <TabsTrigger value="read" className="flex-1 px-2 text-xs">
-          {t("tabs.read")}
-        </TabsTrigger>
-      </TabsList>
-      <TabsContent value="stages" className="mt-2 min-h-0 flex-1 overflow-hidden">
+    <Tabs value={tab} onValueChange={setTab} className="flex h-full w-full min-w-0 flex-col">
+      <div className="shrink-0 px-3 pt-2">
+        <TabsList className="relative z-10 w-full" style={{ touchAction: "manipulation" }}>
+          <TabsTrigger value="stages" className="flex-1 px-2 text-xs">
+            {t("tabs.stages")}
+          </TabsTrigger>
+          <TabsTrigger value="tree" className="flex-1 px-2 text-xs">
+            {t("tabs.tree")}
+          </TabsTrigger>
+          <TabsTrigger value="keys" className="flex-1 px-2 text-xs">
+            {t("tabs.keys")}
+          </TabsTrigger>
+          <TabsTrigger value="read" className="flex-1 px-2 text-xs">
+            {t("tabs.read")}
+          </TabsTrigger>
+        </TabsList>
+      </div>
+      <TabsContent value="stages" className="mt-2 min-h-0 w-full min-w-0 flex-1 overflow-hidden px-3 data-[state=active]:flex data-[state=active]:flex-col">
         <StageBuilder />
       </TabsContent>
       <TabsContent
         value="tree"
-        className="mt-2 min-h-0 flex-1 overflow-hidden rounded-xl border border-border"
+        className="mt-2 min-h-0 w-full min-w-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col"
       >
         <PolicyGraph />
       </TabsContent>
-      <TabsContent value="keys" className="mt-2 min-h-0 flex-1 overflow-hidden">
+      <TabsContent value="keys" className="mt-2 min-h-0 w-full min-w-0 flex-1 overflow-hidden px-3 data-[state=active]:flex data-[state=active]:flex-col">
         <KeyBoard fill />
       </TabsContent>
-      <TabsContent value="read" className="mt-2 min-h-0 flex-1 overflow-hidden">
+      <TabsContent value="read" className="mt-2 min-h-0 w-full min-w-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col">
         <InterpreterPanel />
       </TabsContent>
     </Tabs>
