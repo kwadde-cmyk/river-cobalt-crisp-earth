@@ -1,7 +1,7 @@
 import type { MsNode } from "./ast.ts";
 import { visit } from "./ast.ts";
 import { uid } from "../utils.ts";
-import { baseKeyName } from "./keys.ts";
+import { baseKeyName, keyRoleLabel } from "./keys.ts";
 
 export interface Stage {
   id: string;
@@ -72,6 +72,65 @@ export function reuseAliasHints(
     }
   }
   return map;
+}
+
+export function stageIndicesForAccount(
+  stages: Stage[],
+  masterName: string,
+  account: number,
+  reuse: boolean,
+): number[] {
+  return slotsForAccount(stages, masterName, account, reuse).map((s) => s.index);
+}
+
+export interface StageSignerSlot {
+  index: number;
+  delay: number;
+  k: number;
+  n: number;
+  quorum: string;
+  signers: { token: string; role: string; account: number }[];
+}
+
+export function describeStageSlots(stages: Stage[], reuse: boolean): StageSignerSlot[] {
+  const cleaned = cleanedStages(stages);
+  const counts = new Map<string, number>();
+  for (const s of cleaned) {
+    for (const k of s.keys) counts.set(k, (counts.get(k) ?? 0) + 1);
+  }
+  const seen = new Map<string, number>();
+  return cleaned.map((s, i) => {
+    const signers = s.keys.map((name) => {
+      const total = counts.get(name) ?? 1;
+      const n = (seen.get(name) ?? 0) + 1;
+      seen.set(name, n);
+      let account = 0;
+      if (!reuse && total > 1) account = n === 1 ? 0 : n - 1;
+      const token = account > 0 ? `${name}${account}` : name;
+      return { token, role: keyRoleLabel(token), account };
+    });
+    const nKeys = s.keys.length;
+    const k = Math.min(Math.max(s.k, 1), Math.max(nKeys, 1));
+    return {
+      index: i + 1,
+      delay: s.delay,
+      k,
+      n: nKeys,
+      quorum: `${k}of${nKeys}`,
+      signers,
+    };
+  });
+}
+
+export function slotsForAccount(
+  stages: Stage[],
+  masterName: string,
+  account: number,
+  reuse: boolean,
+): StageSignerSlot[] {
+  return describeStageSlots(stages, reuse).filter((slot) =>
+    slot.signers.some((s) => baseKeyName(s.token) === masterName && s.account === account),
+  );
 }
 
 export function isDerivedAlias(name: string, masters: Iterable<string>): boolean {

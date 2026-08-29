@@ -2,19 +2,21 @@ import { useCallback, useRef, useState } from "react";
 import {
   accountPathFrom,
   applyKeyMaterial,
-  buildKeyTree,
+  blocksWhen,
   childForAccount,
+  childRoleLabel,
   keyIsFilled,
   keyNeedsAction,
-  keyTileLabel,
+  keyRoleLabel,
   nextUnusedAccount,
   normalizeKeyEntry,
   parseChildKey,
+  parseAccountIndex,
+  shortXpub,
   sortKeyEntries,
   type KeyEntry,
-  type KeyTreeNode,
 } from "@/lib/miniscript/keys";
-import { isDerivedAlias, reuseAliasHints } from "@/lib/miniscript/stages";
+import { isDerivedAlias, reuseAliasHints, slotsForAccount, type Stage, type StageSignerSlot } from "@/lib/miniscript/stages";
 import { useStudio } from "@/store/studio";
 import { FilePick, QrScanner } from "@/components/qr-io";
 import { useHwFillKey } from "@/components/hardware-usb";
@@ -187,13 +189,9 @@ function KeyTile({
 }) {
   const { t } = useT();
   const filled = keyIsFilled(entry);
-  const label = keyTileLabel(entry);
-  const tree = filled || entry.fingerprint ? buildKeyTree(entry, aliases) : null;
-  const alertLabels = new Set(
-    aliases
-      .filter((a) => a.account != null && !childForAccount(entry, a.account)?.xpub.trim())
-      .flatMap((a) => [a.alias, a.account != null ? String(a.account) : ""]),
-  );
+  const role = keyRoleLabel(entry.name);
+  const name = entry.note.trim();
+  const fp = entry.fingerprint.trim().toLowerCase();
   const tileClass = needsAction
     ? "border-danger/80 bg-danger/10 text-fg hover:bg-danger/15"
     : filled
@@ -209,52 +207,79 @@ function KeyTile({
         aria-expanded={false}
         aria-label={needsAction ? t("keys.needAction", { name: entry.name }) : undefined}
         onClick={onToggle}
-        className={`flex h-10 w-full items-center gap-1.5 rounded-md border px-2.5 text-left text-xs transition-colors duration-150 ${tileClass}`}
+        className={`flex min-h-10 w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-left text-xs transition-colors duration-150 ${tileClass}`}
       >
-        <span className={`min-w-0 truncate ${/^[0-9a-f]{8}$/.test(label) || label === entry.name ? "font-mono" : ""}`}>
-          {label}
-        </span>
-        {label !== entry.name ? (
-          <span className={`shrink-0 font-mono text-2xs ${needsAction ? "text-danger" : "text-fg-subtle"}`}>
-            {entry.name}
-          </span>
-        ) : null}
+        <span className="min-w-0 flex-1 truncate">{name || t("keys.unnamed")}</span>
+        <span className="shrink-0 font-mono text-2xs text-fg-muted">{fp || "—"}</span>
+        <span className={`shrink-0 font-mono text-2xs ${needsAction ? "text-danger" : "text-fg-subtle"}`}>{role}</span>
         {childTotal > 0 ? <NestedKeyStack present={childPresent} total={childTotal} compact /> : null}
       </button>
     );
   }
 
   return (
-    <button
-      type="button"
+    <div
       data-key-tile={entry.name}
       data-need-action={needsAction ? "true" : undefined}
-      aria-expanded={true}
-      aria-label={needsAction ? t("keys.needAction", { name: entry.name }) : undefined}
-      onClick={onToggle}
       className={`w-full rounded-xl border p-3 text-left transition-colors duration-150 ${tileClass}`}
     >
-      <div className="flex items-baseline justify-between gap-2">
-        <p className="truncate text-sm text-fg">{label}</p>
-        <span className={`shrink-0 font-mono text-2xs ${needsAction ? "text-danger" : "text-fg-subtle"}`}>
-          {entry.name}
-        </span>
+      <button
+        type="button"
+        aria-expanded={true}
+        aria-label={needsAction ? t("keys.needAction", { name: entry.name }) : undefined}
+        onClick={onToggle}
+        className="flex w-full items-baseline justify-between gap-2 text-left"
+      >
+        <p className="min-w-0 truncate text-sm text-fg">{name || t("keys.unnamed")}</p>
+        <span className={`shrink-0 font-mono text-2xs ${needsAction ? "text-danger" : "text-fg-subtle"}`}>{role}</span>
         {childTotal > 0 ? <NestedKeyStack present={childPresent} total={childTotal} compact /> : null}
-      </div>
-      {tree ? (
-        <div className="mt-2">
-          <KeyTreeView node={tree} alerts={alertLabels} />
-        </div>
-      ) : (
-        <p className="mt-2 text-xs text-fg-muted">{t("keys.importHint")}</p>
-      )}
-      {filled ? <p className="mt-2 text-2xs text-fg-subtle">{t("keys.tapDetails")}</p> : null}
+      </button>
+      <p className="mt-0.5 font-mono text-2xs text-fg-muted">{fp || "—"}</p>
+      <ul className="mt-2 space-y-1.5">
+        <li className="rounded-md border border-border/80 bg-elevated/40 px-2 py-1.5">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="min-w-0 truncate text-xs">{name || t("keys.unnamed")}</span>
+            <span className="shrink-0 font-mono text-2xs text-fg-subtle">{role}</span>
+          </div>
+          <XpubLine xpub={entry.xpub} />
+        </li>
+        {entry.children.map((c) => (
+          <li key={c.id} className="rounded-md border border-border/80 bg-elevated/40 px-2 py-1.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="min-w-0 truncate text-xs">
+                {c.note.trim() || name || t("keys.unnamed")}
+              </span>
+              <span className="shrink-0 font-mono text-2xs text-fg-subtle">
+                {childRoleLabel(entry.name, c.path)}
+              </span>
+            </div>
+            <XpubLine xpub={c.xpub} />
+          </li>
+        ))}
+        {reuseOff
+          ? aliases
+              .filter((a) => a.account != null && !childForAccount(entry, a.account)?.xpub.trim())
+              .map((a) => (
+                <li key={a.alias} className="rounded-md border border-danger/40 bg-danger/5 px-2 py-1.5">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-xs text-danger">{t("keys.missing")}</span>
+                    <span className="font-mono text-2xs text-danger">{childRoleLabel(entry.name, accountPathFrom(entry.derivation, a.account!))}</span>
+                  </div>
+                </li>
+              ))
+          : null}
+      </ul>
+      {filled ? (
+        <button type="button" onClick={onToggle} className="mt-2 text-2xs text-fg-subtle">
+          {t("keys.tapDetails")}
+        </button>
+      ) : null}
       {reuseOff && aliases.some((a) => a.account != null) ? (
         <p className="mt-2 text-2xs text-fg-muted">
           {t("keys.nextAccount", { path: nextUnusedAccount(entry).path })}
         </p>
       ) : null}
-    </button>
+    </div>
   );
 }
 
@@ -305,26 +330,102 @@ function NestedKeyStack({
   );
 }
 
-function KeyTreeView({
-  node,
-  depth = 0,
-  alerts,
-}: {
-  node: KeyTreeNode;
-  depth?: number;
-  alerts?: Set<string>;
-}) {
-  const kids = node.children.filter((c) => c.label.trim());
-  const warn = Boolean(alerts?.has(node.label));
+function XpubLine({ xpub }: { xpub: string }) {
+  const [open, setOpen] = useState(false);
+  const { t } = useT();
+  if (!xpub.trim()) return <p className="font-mono text-2xs text-fg-muted">—</p>;
   return (
-    <div className={depth === 0 ? "w-full" : "ml-0 w-full border-l border-border pl-3"}>
-      <p className={`break-all font-mono text-xs leading-5 ${warn ? "text-danger" : "text-fg"}`}>{node.label}</p>
-      {node.hint ? (
-        <p className={`break-all font-mono text-2xs ${warn ? "text-danger" : "text-fg-muted"}`}>{node.hint}</p>
-      ) : null}
-      {kids.map((c, i) => (
-        <KeyTreeView key={`${c.label}-${i}`} node={c} depth={depth + 1} alerts={alerts} />
-      ))}
+    <button
+      type="button"
+      title={t("keys.xpubTap")}
+      onClick={() => setOpen((v) => !v)}
+      className="w-full break-all text-left font-mono text-2xs text-fg-muted hover:text-fg"
+    >
+      {open ? xpub : shortXpub(xpub)}
+    </button>
+  );
+}
+
+function KeySlotTree({
+  entry,
+  needs,
+  stages,
+  reuse,
+}: {
+  entry: KeyEntry;
+  needs: { alias: string; delay: number; account?: number }[];
+  stages: Stage[];
+  reuse: boolean;
+}) {
+  const { t, locale } = useT();
+  const rows: {
+    key: string;
+    role: string;
+    path: string;
+    xpub: string;
+    slots: StageSignerSlot[];
+    missing?: boolean;
+  }[] = [
+    {
+      key: "master",
+      role: keyRoleLabel(entry.name),
+      path: entry.derivation || "48'/0'/0'/2'",
+      xpub: entry.xpub,
+      slots: slotsForAccount(stages, entry.name, 0, reuse),
+    },
+    ...entry.children.map((c) => {
+      const acc = parseAccountIndex(c.path);
+      return {
+        key: c.id,
+        role: childRoleLabel(entry.name, c.path),
+        path: c.path.replace(/^m\//, ""),
+        xpub: c.xpub,
+        slots: acc != null ? slotsForAccount(stages, entry.name, acc, reuse) : [],
+      };
+    }),
+    ...needs
+      .filter((n) => n.account != null && !childForAccount(entry, n.account)?.xpub.trim())
+      .map((n) => ({
+        key: n.alias,
+        role: childRoleLabel(entry.name, accountPathFrom(entry.derivation, n.account!)),
+        path: accountPathFrom(entry.derivation, n.account!),
+        xpub: "",
+        slots: slotsForAccount(stages, entry.name, n.account!, reuse),
+        missing: true,
+      })),
+  ];
+
+  function slotLine(slot: StageSignerSlot, selfRole: string): string {
+    const others = slot.signers.filter((s) => s.role !== selfRole).map((s) => s.role);
+    const when = slot.delay > 0 ? blocksWhen(slot.delay, locale) : t("read.now");
+    return [t("stages.n", { n: slot.index }), ...others, slot.quorum, when].join(" · ");
+  }
+
+  return (
+    <div className="w-full font-mono">
+      <p className="text-xs text-fg">m</p>
+      <ul className="border-l border-border pl-3">
+        {rows.map((r) => (
+          <li key={r.key} className={`py-1.5 ${r.missing ? "text-danger" : "text-fg"}`}>
+            <p className="text-xs">
+              {r.role}
+              <span className={`ml-2 text-2xs ${r.missing ? "text-danger" : "text-fg-muted"}`}>{r.path}</span>
+            </p>
+            {r.slots.length ? (
+              <ul className={`mt-0.5 space-y-0.5 text-2xs ${r.missing ? "text-danger" : "text-fg-muted"}`}>
+                {r.slots.map((slot) => (
+                  <li key={slot.index}>{slotLine(slot, r.role)}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className={`text-2xs ${r.missing ? "text-danger" : "text-fg-muted"}`}>
+                {r.missing ? t("keys.missing") : "—"}
+              </p>
+            )}
+            {r.missing ? null : <XpubLine xpub={r.xpub} />}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -349,15 +450,6 @@ function KeyImportDialog({
   const [draft, setDraft] = useState("");
   const [childDraft, setChildDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [detailId, setDetailId] = useState("master");
-  const [detailDraft, setDetailDraft] = useState({
-    note: "",
-    fingerprint: "",
-    derivation: "",
-    xpub: "",
-    childPath: "",
-  });
-  const [childDetail, setChildDetail] = useState({ path: "", fingerprint: "", xpub: "", note: "" });
   const filled = entry ? keyIsFilled(entry) : false;
   const hwTarget = useRef<"master" | "child">("master");
   const fetchHw = useHwFillKey(entry?.id ?? "", (origin) => {
@@ -408,21 +500,11 @@ function KeyImportDialog({
       setDraft("");
       setChildDraft("");
       setError(null);
-      setDetailId("master");
-    } else if (entry) {
-      setDetailDraft({
-        note: entry.note,
-        fingerprint: entry.fingerprint,
-        derivation: entry.derivation,
-        xpub: entry.xpub,
-        childPath: entry.childPath,
-      });
     }
     onOpenChange(nextOpen);
   }
 
   if (!entry) return null;
-  const child = entry.children.find((c) => c.id === detailId) ?? null;
   const preview = draft.trim() ? applyKeyMaterial(entry, draft) : null;
   const childPreview = childDraft.trim()
     ? parseChildKey(entry, childDraft, { fallbackPath: next.path, alias: nextNeed?.alias })
@@ -433,8 +515,10 @@ function KeyImportDialog({
       <DialogContent className="flex max-h-[min(720px,calc(100dvh-2rem))] w-[min(720px,calc(100vw-1rem))] flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>
-            {keyTileLabel(entry)}
-            <span className="ml-2 font-mono text-sm font-normal text-fg-muted">{entry.name}</span>
+            {entry.note.trim() || t("keys.unnamed")}
+            <span className="ml-2 font-mono text-sm font-normal text-fg-muted">
+              {entry.fingerprint || "—"} · {keyRoleLabel(entry.name)}
+            </span>
           </DialogTitle>
           <DialogDescription>{t("keys.dialogBlurb")}</DialogDescription>
         </DialogHeader>
@@ -451,6 +535,18 @@ function KeyImportDialog({
             </TabsTrigger>
           </TabsList>
           <TabsContent value="master" className="min-h-0 flex-1 space-y-3 overflow-auto">
+            <Field label={t("keys.name")}>
+              <Input
+                value={entry.note}
+                placeholder="NANO-S, Coldcard, …"
+                onChange={(e) => updateKey(entry.id, { note: e.target.value })}
+              />
+            </Field>
+            <p className="font-mono text-2xs text-fg-muted">
+              {t("keys.role")}: {keyRoleLabel(entry.name)}
+              {entry.fingerprint ? ` · ${entry.fingerprint}` : ""}
+            </p>
+            <XpubLine xpub={entry.xpub} />
             {!reuseKeys && needs.length ? <AccountPlan entry={entry} needs={needs} /> : null}
             <ImportPane
               draft={draft}
@@ -510,16 +606,6 @@ function KeyImportDialog({
           <TabsContent value="children" className="min-h-0 flex-1 space-y-3 overflow-auto">
             {filled || entry.fingerprint ? (
               <>
-                <KeyTreeView
-                  node={buildKeyTree(entry, needs)}
-                  alerts={
-                    new Set(
-                      needs
-                        .filter((n) => n.account != null && !childForAccount(entry, n.account)?.xpub.trim())
-                        .map((n) => n.alias),
-                    )
-                  }
-                />
                 {!reuseKeys ? <AccountPlan entry={entry} needs={needs} onPick={(path) => setChildDraft(`[${entry.fingerprint}/${path}]`)} /> : null}
                 <p className="font-mono text-2xs text-fg-muted">{t("keys.nextAccount", { path: next.path })}</p>
                 <ImportPane
@@ -572,15 +658,16 @@ function KeyImportDialog({
                       >
                         <span className="min-w-0 flex-1 space-y-0.5">
                           <span className="block font-mono text-xs text-fg">
-                            {c.note ? `${c.note} · ` : ""}
-                            {c.path}
+                            {childRoleLabel(entry.name, c.path)}
                           </span>
-                          {c.fingerprint ? (
-                            <span className="block font-mono text-2xs text-fg-muted">{c.fingerprint}</span>
-                          ) : null}
-                          <span className="block break-all font-mono text-2xs text-fg-muted">
-                            {c.xpub || "—"}
+                          <span className="block text-xs text-fg">
+                            {c.note.trim() || entry.note.trim() || t("keys.unnamed")}
+                            {c.fingerprint || entry.fingerprint
+                              ? ` · ${(c.fingerprint || entry.fingerprint).toLowerCase()}`
+                              : ""}
                           </span>
+                          <span className="block font-mono text-2xs text-fg-muted">{c.path}</span>
+                          <XpubLine xpub={c.xpub} />
                         </span>
                         <button
                           type="button"
@@ -602,171 +689,9 @@ function KeyImportDialog({
             )}
           </TabsContent>
           <TabsContent value="details" className="min-h-0 flex-1 space-y-3 overflow-auto">
-            <Field label={t("keys.detailOf")}>
-              <div className="flex w-full flex-col gap-1">
-                <button
-                  type="button"
-                  aria-pressed={detailId === "master"}
-                  onClick={() => {
-                    setDetailId("master");
-                    setDetailDraft({
-                      note: entry.note,
-                      fingerprint: entry.fingerprint,
-                      derivation: entry.derivation,
-                      xpub: entry.xpub,
-                      childPath: entry.childPath,
-                    });
-                  }}
-                  className={`h-9 w-full rounded-md border px-3 text-left text-xs ${
-                    detailId === "master"
-                      ? "border-border-strong bg-muted text-fg"
-                      : "border-border text-fg-muted"
-                  }`}
-                >
-                  {t("keys.master")}
-                </button>
-                {entry.children.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    aria-pressed={detailId === c.id}
-                    onClick={() => {
-                      setDetailId(c.id);
-                      setChildDetail({
-                        path: c.path,
-                        fingerprint: c.fingerprint,
-                        xpub: c.xpub,
-                        note: c.note,
-                      });
-                    }}
-                    className={`h-9 w-full truncate rounded-md border px-3 text-left font-mono text-xs ${
-                      detailId === c.id
-                        ? "border-border-strong bg-muted text-fg"
-                        : "border-border text-fg-muted"
-                    }`}
-                  >
-                    {c.note || c.path}
-                  </button>
-                ))}
-              </div>
-            </Field>
-            {detailId === "master" || !child ? (
-              <>
-                <Field label={t("keys.name")}>
-                  <Input
-                    value={detailDraft.note}
-                    placeholder="Coldcard, Alice, …"
-                    onChange={(e) => setDetailDraft((d) => ({ ...d, note: e.target.value }))}
-                  />
-                </Field>
-                <Field label={t("keys.fp")}>
-                  <Input
-                    className="font-mono text-xs"
-                    placeholder="deadbeef"
-                    value={detailDraft.fingerprint}
-                    onChange={(e) => setDetailDraft((d) => ({ ...d, fingerprint: e.target.value }))}
-                  />
-                </Field>
-                <Field label={t("keys.bip32")}>
-                  <Input
-                    className="font-mono text-xs"
-                    placeholder={network === "testnet" ? "48'/1'/0'/2'" : "48'/0'/0'/2'"}
-                    value={detailDraft.derivation}
-                    onChange={(e) => setDetailDraft((d) => ({ ...d, derivation: e.target.value }))}
-                  />
-                </Field>
-                <Field label="xpub">
-                  <Textarea
-                    className="min-h-24 w-full break-all"
-                    placeholder="xpub…"
-                    value={detailDraft.xpub}
-                    onChange={(e) => setDetailDraft((d) => ({ ...d, xpub: e.target.value }))}
-                  />
-                </Field>
-                <Field label={t("keys.childPath")}>
-                  <Input
-                    className="font-mono text-xs"
-                    placeholder="<0;1>/*"
-                    value={detailDraft.childPath}
-                    onChange={(e) => setDetailDraft((d) => ({ ...d, childPath: e.target.value }))}
-                  />
-                </Field>
-                <p className="text-2xs text-fg-muted">{t("keys.draftHint")}</p>
-                <div className="flex justify-end">
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      updateKey(entry.id, {
-                        note: detailDraft.note,
-                        fingerprint: detailDraft.fingerprint,
-                        derivation: detailDraft.derivation,
-                        xpub: detailDraft.xpub.trim(),
-                        childPath: detailDraft.childPath,
-                        multipath: detailDraft.childPath.match(/^<[^>]+>/)?.[0] || entry.multipath,
-                      });
-                      toast.success(t("keys.taken", { name: entry.name }));
-                    }}
-                  >
-                    {t("keys.detailsApply")}
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <>
-                <Field label={t("keys.bip32")}>
-                  <Input
-                    className="font-mono text-xs"
-                    value={childDetail.path}
-                    onChange={(e) => setChildDetail((d) => ({ ...d, path: e.target.value }))}
-                  />
-                </Field>
-                <Field label={t("keys.fp")}>
-                  <Input
-                    className="font-mono text-xs"
-                    value={childDetail.fingerprint}
-                    onChange={(e) => setChildDetail((d) => ({ ...d, fingerprint: e.target.value }))}
-                  />
-                </Field>
-                <Field label="xpub">
-                  <Textarea
-                    className="min-h-24 w-full break-all"
-                    placeholder="xpub…"
-                    value={childDetail.xpub}
-                    onChange={(e) => setChildDetail((d) => ({ ...d, xpub: e.target.value }))}
-                  />
-                </Field>
-                <Field label={t("keys.name")}>
-                  <Input
-                    value={childDetail.note}
-                    onChange={(e) => setChildDetail((d) => ({ ...d, note: e.target.value }))}
-                  />
-                </Field>
-                <p className="text-2xs text-fg-muted">{t("keys.draftHint")}</p>
-                <div className="flex justify-end">
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      updateKey(entry.id, {
-                        children: entry.children.map((c) =>
-                          c.id === child.id
-                            ? {
-                                ...c,
-                                path: childDetail.path,
-                                fingerprint: childDetail.fingerprint,
-                                xpub: childDetail.xpub.trim(),
-                                note: childDetail.note,
-                              }
-                            : c,
-                        ),
-                      });
-                      toast.success(t("keys.childTaken"));
-                    }}
-                  >
-                    {t("keys.detailsApply")}
-                  </Button>
-                </div>
-              </>
-            )}
+            <p className="text-2xs text-fg-muted">{t("keys.detailsTogether")}</p>
+            <p className="text-2xs text-fg-muted">{t("keys.xpubTap")}</p>
+            <KeySlotTree entry={entry} needs={needs} stages={stages} reuse={reuseKeys} />
           </TabsContent>
         </Tabs>
       </DialogContent>
@@ -806,7 +731,7 @@ function AccountPlan({
                 className="flex w-full items-center justify-between gap-2 rounded-md px-0.5 text-left font-mono text-2xs"
               >
                 <span className="text-fg">
-                  {n.alias} · {path}
+                  {childRoleLabel(entry.name, path)} · {path}
                 </span>
                 <span className={has ? "text-ok" : "text-danger"}>{has ? t("keys.present") : t("keys.missing")}</span>
               </button>

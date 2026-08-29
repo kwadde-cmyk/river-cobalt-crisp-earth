@@ -20,7 +20,10 @@ import {
   formatKeyList,
   keyHeadline,
   keyNeedsAction,
+  keyRoleLabel,
+  childRoleLabel,
   keyTileLabel,
+  shortXpub,
   tokenNeedsAction,
   nextUnusedAccount,
   orderMasterNames,
@@ -32,7 +35,7 @@ import {
   sortKeyEntries,
 } from "./keys.ts";
 import { parseAny } from "./parser.ts";
-import { compileStages, inferStages, permutations, stageFormula, stageHighlightIds, stageKeyOrderVariants } from "./stages.ts";
+import { compileStages, describeStageSlots, inferStages, permutations, slotsForAccount, stageFormula, stageHighlightIds, stageIndicesForAccount, stageKeyOrderVariants } from "./stages.ts";
 import {
   compileBip388,
   formatBitboxJson,
@@ -244,7 +247,8 @@ describe("keys", () => {
     assert.equal(child.ok, true);
     if (!child.ok) return;
     assert.equal(child.child.path, "48'/0'/1'/2'");
-    assert.equal(child.child.note, "A1");
+    assert.equal(child.child.note, "");
+    assert.equal(childRoleLabel("A", child.child.path), "A1 Child");
   });
 
   it("attaches a deeper origin as child instead of replacing", () => {
@@ -261,11 +265,18 @@ describe("keys", () => {
     assert.equal(result.key.children[0]?.path, "0");
   });
 
-  it("labels a tile with name, else fingerprint, else alias", () => {
+  it("keeps name, fingerprint and role as separate labels", () => {
     const a = emptyKey("A");
-    assert.equal(keyTileLabel(a), "A");
-    assert.equal(keyTileLabel({ ...a, fingerprint: "DEADBEEF" }), "deadbeef");
-    assert.equal(keyTileLabel({ ...a, fingerprint: "deadbeef", note: "Coldcard" }), "Coldcard");
+    assert.equal(keyRoleLabel("A"), "A Master");
+    assert.equal(keyRoleLabel("A1"), "A1 Child");
+    assert.equal(childRoleLabel("A", "48'/0'/1'/2'"), "A1 Child");
+    assert.equal(keyTileLabel(a), "—, —, A Master");
+    assert.equal(keyTileLabel({ ...a, fingerprint: "DEADBEEF" }), "—, deadbeef, A Master");
+    assert.equal(
+      keyTileLabel({ ...a, fingerprint: "deadbeef", note: "NANO-S" }),
+      "NANO-S, deadbeef, A Master",
+    );
+    assert.equal(shortXpub(XPUB), `${XPUB.slice(0, 12)}…${XPUB.slice(-8)}`);
   });
 
   it("flags empty keys and missing child accounts", () => {
@@ -369,6 +380,33 @@ describe("stages", () => {
     assert.equal(new Set(variants.map((v) => v.checksum)).size, variants.length);
     const sorted = descriptorOrderVariants([{ ...stages[0]!, sorted: true }], keys, true, 12);
     assert.equal(sorted.length, 1);
+  });
+
+  it("maps signing slots to master vs child accounts", () => {
+    const stages = [
+      { id: "s1", delay: 0, k: 2, keys: ["A", "B"] },
+      { id: "s2", delay: 144, k: 1, keys: ["A"] },
+    ];
+    assert.deepEqual(stageIndicesForAccount(stages, "A", 0, true), [1, 2]);
+    assert.deepEqual(stageIndicesForAccount(stages, "A", 0, false), [1]);
+    assert.deepEqual(stageIndicesForAccount(stages, "A", 1, false), [2]);
+    assert.deepEqual(stageIndicesForAccount(stages, "B", 0, false), [1]);
+    const delayed = [
+      { id: "s1", delay: 0, k: 2, keys: ["A", "B", "C"] },
+      { id: "s2", delay: 60000, k: 2, keys: ["A", "B", "C"] },
+    ];
+    const a1 = slotsForAccount(delayed, "A", 1, false)[0];
+    assert.equal(a1?.quorum, "2of3");
+    assert.equal(a1?.delay, 60000);
+    assert.deepEqual(
+      a1?.signers.map((s) => s.role),
+      ["A1 Child", "B1 Child", "C1 Child"],
+    );
+    const now = describeStageSlots(delayed, false)[0];
+    assert.deepEqual(
+      now?.signers.map((s) => s.role),
+      ["A Master", "B Master", "C Master"],
+    );
   });
 
   it("uses distinct child accounts when reuse is off", () => {

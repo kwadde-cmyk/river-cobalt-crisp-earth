@@ -153,7 +153,10 @@ export function relabelKeysFromA<S extends { keys: string[]; required?: string[]
     keys.map((k) => ({
       ...k,
       name: mapTok(k.name),
-      children: k.children.map((c) => ({ ...c, note: c.note ? mapTok(c.note) : c.note })),
+      children: k.children.map((c) => ({
+        ...c,
+        note: c.note && aliasAccountIndex(c.note) != null ? mapTok(c.note) : c.note,
+      })),
     })),
     nextStages,
   );
@@ -698,15 +701,33 @@ export function keyHeadline(k: KeyEntry): string {
   if (note) return note;
   const fp = formatFingerprint(k.fingerprint);
   if (fp) return fp;
-  return "ohne Material";
+  return keyRoleLabel(k.name);
+}
+
+export function keyRoleLabel(token: string): string {
+  const acc = aliasAccountIndex(token);
+  if (acc != null && acc > 0) return `${token} Child`;
+  return `${baseKeyName(token) || token} Master`;
+}
+
+export function childRoleLabel(masterName: string, path: string): string {
+  const acc = parseAccountIndex(path);
+  if (acc != null && acc > 0) return `${masterName}${acc} Child`;
+  return `${masterName} Child`;
 }
 
 export function keyTileLabel(k: KeyEntry): string {
-  const note = k.note.trim();
-  if (note) return note;
-  const fp = formatFingerprint(k.fingerprint);
-  if (fp) return fp;
-  return k.name;
+  const name = k.note.trim() || "—";
+  const fp = formatFingerprint(k.fingerprint) || "—";
+  return `${name}, ${fp}, ${keyRoleLabel(k.name)}`;
+}
+
+export function shortXpub(raw: string, head = 12, tail = 8): string {
+  const m = raw.match(/(?:xpub|tpub|ypub|zpub|vpub|Ypub|Zpub|Vpub)[1-9A-HJ-NP-Za-km-z]+/);
+  const s = m ? m[0]! : raw.trim();
+  if (!s) return "";
+  if (s.length <= head + tail + 1) return s;
+  return `${s.slice(0, head)}…${s.slice(-tail)}`;
 }
 
 export function formatBip32Path(k: KeyEntry): string {
@@ -950,6 +971,13 @@ function relativizePath(parent: KeyEntry, rawPath: string): string {
   return p;
 }
 
+function userNote(alias?: string): string {
+  if (!alias?.trim()) return "";
+  if (aliasAccountIndex(alias) != null) return "";
+  if (/^[A-Z]$/.test(alias.trim())) return "";
+  return alias.trim();
+}
+
 export function parseChildKey(
   parent: KeyEntry,
   text: string,
@@ -970,7 +998,7 @@ export function parseChildKey(
     }
     return {
       ok: true,
-      child: { id: uid("ck"), path, xpub: "", fingerprint: formatFingerprint(base.fingerprint), note: opts?.alias || "" },
+      child: { id: uid("ck"), path, xpub: "", fingerprint: formatFingerprint(base.fingerprint), note: userNote(opts?.alias) },
     };
   }
 
@@ -1031,7 +1059,7 @@ export function parseChildKey(
       path,
       xpub: sameXpub ? "" : parsed.xpub,
       fingerprint: childFp || parentFp,
-      note: opts?.alias || "",
+      note: userNote(opts?.alias),
     },
   };
 }
