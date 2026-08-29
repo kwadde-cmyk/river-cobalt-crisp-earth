@@ -23,9 +23,11 @@ import {
   keyRoleLabel,
   childRoleLabel,
   keyTileLabel,
+  sanitizeKeyNote,
   shortXpub,
   tokenNeedsAction,
   nextUnusedAccount,
+  normalizeKeyEntry,
   orderMasterNames,
   parseChildKey,
   parseKeyExpr,
@@ -263,6 +265,28 @@ describe("keys", () => {
     if (!result.ok) return;
     assert.equal(result.key.xpub, XPUB);
     assert.equal(result.key.children[0]?.path, "0");
+  });
+
+  it("does not treat alias letters as device names", () => {
+    assert.equal(sanitizeKeyNote("A"), "");
+    assert.equal(sanitizeKeyNote("A1"), "");
+    assert.equal(sanitizeKeyNote("NANO-S"), "NANO-S");
+    const childXpub =
+      "xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsfTFUHCdrfp1bgwQ9xv5ski8PX9rL2dZXvgGDnw";
+    const grouped = groupKeysByFingerprint([
+      { ...emptyKey("B"), fingerprint: "deadbeef", derivation: "48'/0'/0'/2'", xpub: XPUB },
+      { ...emptyKey("A"), fingerprint: "DEADBEEF", derivation: "48'/0'/1'/2'", xpub: childXpub },
+    ]);
+    const master = grouped.keys.find((k) => k.fingerprint === "deadbeef") ?? grouped.keys[0];
+    assert.equal(master?.children[0]?.note, "");
+    assert.equal(normalizeKeyEntry({ ...emptyKey("B"), note: "A", children: [{ id: "c", path: "48'/0'/1'/2'", xpub: childXpub, fingerprint: "deadbeef", note: "A1" }] }).note, "");
+    assert.equal(
+      normalizeKeyEntry({
+        ...emptyKey("B"),
+        children: [{ id: "c", path: "48'/0'/1'/2'", xpub: childXpub, fingerprint: "deadbeef", note: "A" }],
+      }).children[0]?.note,
+      "",
+    );
   });
 
   it("keeps name, fingerprint and role as separate labels", () => {

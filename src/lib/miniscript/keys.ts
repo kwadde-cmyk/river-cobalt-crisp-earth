@@ -43,9 +43,20 @@ export function normalizeKeyEntry(k: KeyEntry): KeyEntry {
     ...k,
     multipath,
     childPath,
-    children: Array.isArray(k.children) ? k.children : [],
-    note: k.note ?? "",
+    children: Array.isArray(k.children)
+      ? k.children.map((c) => ({ ...c, note: sanitizeKeyNote(c.note) }))
+      : [],
+    note: sanitizeKeyNote(k.note),
   };
+}
+
+export function sanitizeKeyNote(note?: string): string {
+  const s = (note ?? "").trim();
+  if (!s) return "";
+  if (/^[A-Z]$/i.test(s)) return "";
+  if (/^K\d+$/i.test(s)) return "";
+  if (aliasAccountIndex(s) != null) return "";
+  return s;
 }
 
 export function nextKeyName(existing: string[]): string {
@@ -600,7 +611,7 @@ export function groupKeysByFingerprint(keys: KeyEntry[]): {
           path: extra.derivation || extra.childPath || "",
           xpub: extra.xpub,
           fingerprint: extra.fingerprint || master.fingerprint,
-          note: extra.note || extra.name,
+          note: sanitizeKeyNote(extra.note),
         });
       }
       rename.set(extra.name, alias);
@@ -631,7 +642,7 @@ export function collapseAliasKeys(keys: KeyEntry[], masters: string[]): KeyEntry
             path: k.derivation || k.childPath || "",
             xpub: k.xpub,
             fingerprint: k.fingerprint,
-            note: k.note || k.name,
+            note: sanitizeKeyNote(k.note),
           },
         ];
       }
@@ -972,10 +983,7 @@ function relativizePath(parent: KeyEntry, rawPath: string): string {
 }
 
 function userNote(alias?: string): string {
-  if (!alias?.trim()) return "";
-  if (aliasAccountIndex(alias) != null) return "";
-  if (/^[A-Z]$/.test(alias.trim())) return "";
-  return alias.trim();
+  return sanitizeKeyNote(alias);
 }
 
 export function parseChildKey(

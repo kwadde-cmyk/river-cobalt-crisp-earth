@@ -237,22 +237,12 @@ function KeyTile({
       <p className="mt-0.5 font-mono text-2xs text-fg-muted">{fp || "—"}</p>
       <ul className="mt-2 space-y-1.5">
         <li className="rounded-md border border-border/80 bg-elevated/40 px-2 py-1.5">
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="min-w-0 truncate text-xs">{name || t("keys.unnamed")}</span>
-            <span className="shrink-0 font-mono text-2xs text-fg-subtle">{role}</span>
-          </div>
+          <p className="font-mono text-2xs text-fg-subtle">{role}</p>
           <XpubLine xpub={entry.xpub} />
         </li>
         {entry.children.map((c) => (
           <li key={c.id} className="rounded-md border border-border/80 bg-elevated/40 px-2 py-1.5">
-            <div className="flex items-baseline justify-between gap-2">
-              <span className="min-w-0 truncate text-xs">
-                {c.note.trim() || name || t("keys.unnamed")}
-              </span>
-              <span className="shrink-0 font-mono text-2xs text-fg-subtle">
-                {childRoleLabel(entry.name, c.path)}
-              </span>
-            </div>
+            <p className="font-mono text-2xs text-fg-subtle">{childRoleLabel(entry.name, c.path)}</p>
             <XpubLine xpub={c.xpub} />
           </li>
         ))}
@@ -659,12 +649,6 @@ function KeyImportDialog({
                         <span className="min-w-0 flex-1 space-y-0.5">
                           <span className="block font-mono text-xs text-fg">
                             {childRoleLabel(entry.name, c.path)}
-                          </span>
-                          <span className="block text-xs text-fg">
-                            {c.note.trim() || entry.note.trim() || t("keys.unnamed")}
-                            {c.fingerprint || entry.fingerprint
-                              ? ` · ${(c.fingerprint || entry.fingerprint).toLowerCase()}`
-                              : ""}
                           </span>
                           <span className="block font-mono text-2xs text-fg-muted">{c.path}</span>
                           <XpubLine xpub={c.xpub} />

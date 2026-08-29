@@ -9,6 +9,7 @@ import {
   nextKeyName,
   normalizeKeyEntry,
   parseKeyExpr,
+  sanitizeKeyNote,
   type KeyChild,
   type KeyEntry,
 } from "./keys.ts";
@@ -613,14 +614,14 @@ export function parseScriptwerkBundle(text: string): {
               path: firstString(ch, ["path", "derivation"]),
               xpub: firstString(ch, ["xpub"]),
               fingerprint: firstString(ch, ["fingerprint", "fp"]),
-              note: firstString(ch, ["note", "label", "alias"]),
+              note: sanitizeKeyNote(firstString(ch, ["note", "label"])),
             },
           ];
         })
       : [];
     keys.push({
       ...emptyKey(name),
-      note: firstString(k, ["note", "label"]),
+      note: sanitizeKeyNote(firstString(k, ["note", "label"])),
       fingerprint: firstString(k, ["fingerprint", "fp"]),
       derivation: firstString(k, ["derivation", "path"]) || emptyKey(name).derivation,
       xpub: firstString(k, ["xpub"]),
