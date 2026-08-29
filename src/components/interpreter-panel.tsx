@@ -128,6 +128,7 @@ function OrderVariants() {
   const keys = useStudio((s) => s.keys);
   const reuseKeys = useStudio((s) => s.reuseKeys);
   const setStages = useStudio((s) => s.setStages);
+  const updateKey = useStudio((s) => s.updateKey);
   const root = useStudio((s) => s.root);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -143,11 +144,14 @@ function OrderVariants() {
   const needle = query.trim().replace(/^#/, "").toLowerCase();
   const hits = useMemo(() => {
     if (!needle) return variants;
-    return variants.filter(
-      (v) =>
-        v.checksum.toLowerCase().includes(needle) ||
-        v.orders.some((row) => row.toLowerCase().includes(needle)),
-    );
+    return variants.filter((v) => {
+      const n = needle.replace(/:/g, ";").replace(/^\/+/, "");
+      return (
+        v.checksum.toLowerCase().includes(n) ||
+        v.childPath.toLowerCase().includes(n) ||
+        v.orders.some((row) => row.toLowerCase().includes(n))
+      );
+    });
   }, [variants, needle]);
   if (count.total <= 1 && !count.capped) return null;
   const current =
@@ -203,6 +207,10 @@ function OrderVariants() {
                         type="button"
                         onClick={() => {
                           setStages(v.stages);
+                          const mp = v.childPath.match(/^<[^>]+>/)?.[0] || "<0;1>";
+                          for (const k of keys) {
+                            updateKey(k.id, { childPath: v.childPath, multipath: mp });
+                          }
                           setOpen(false);
                         }}
                         className={`w-full rounded-lg border px-3 py-2 text-left ${
@@ -215,6 +223,7 @@ function OrderVariants() {
                             {active ? t("read.orderCurrent") : t("read.useOrder")}
                           </span>
                         </div>
+                        <p className="mt-0.5 font-mono text-2xs text-fg-muted">{t("read.orderPath", { path: v.childPath })}</p>
                         <ul className="mt-1 space-y-0.5">
                           {v.orders.map((row, i) => (
                             <li key={`${v.checksum}-${i}`} className="font-mono text-2xs text-fg-muted">

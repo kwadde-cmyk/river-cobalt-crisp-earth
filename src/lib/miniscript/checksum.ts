@@ -76,8 +76,13 @@ export function coreCanonicalBody(s: string): string {
     .replace(/\[([^\]]*)\]/g, (_m, inner: string) => `[${inner.replace(/h/g, "'")}]`);
 }
 
-export function coreCanonicalDescriptor(s: string): string {
-  return descsumCreate(coreCanonicalBody(s));
+export const CHILD_PATH_FORMS = ["<0;1>/*", "0/*"] as const;
+
+const RANGE_TAIL = /\/(?:<[^>]+>|\d+)\/\*/g;
+
+export function rewriteDescriptorChildPath(desc: string, tail: string): string {
+  const body = stripChecksum(desc).replace(RANGE_TAIL, `/${tail.replace(/^\//, "")}`);
+  return descsumCreate(body);
 }
 
 export function descsumCheck(s: string): boolean {

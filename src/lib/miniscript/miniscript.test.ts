@@ -402,8 +402,14 @@ describe("stages", () => {
     const variants = descriptorOrderVariants(stages, keys, true, 12);
     assert.ok(variants.length >= 2);
     assert.equal(new Set(variants.map((v) => v.checksum)).size, variants.length);
+    assert.ok(variants.some((v) => v.childPath === "<0;1>/*"));
+    assert.ok(variants.some((v) => v.childPath === "0/*"));
+    const sameOrder = variants.filter((v) => v.orders[0] === "A · B · C");
+    assert.equal(sameOrder.length, 2);
+    assert.notEqual(sameOrder[0]?.checksum, sameOrder[1]?.checksum);
     const sorted = descriptorOrderVariants([{ ...stages[0]!, sorted: true }], keys, true, 12);
-    assert.equal(sorted.length, 1);
+    assert.equal(new Set(sorted.map((v) => v.orders[0])).size, 1);
+    assert.equal(sorted.length, 2);
   });
 
   it("maps signing slots to master vs child accounts", () => {

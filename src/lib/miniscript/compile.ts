@@ -2,7 +2,7 @@ import type { KeyEntry } from "./keys.ts";
 import { accountPathFrom, childForAccount } from "./keys.ts";
 import type { MsNode } from "./ast.ts";
 import { collectKeys, hasHoles } from "./ast.ts";
-import { descsumCreate } from "./checksum.ts";
+import { descsumCreate, CHILD_PATH_FORMS, rewriteDescriptorChildPath } from "./checksum.ts";
 import { compileStages, stageKeyOrderVariants, type Stage } from "./stages.ts";
 
 export function compileMiniscript(node: MsNode, compact = true): string {
@@ -99,13 +99,17 @@ function escapeRe(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+const RANGE_TAIL = /\/(?:<[^>]+>|\d+)\/\*$/;
+
 export function formatKeyExpr(k: KeyEntry): string {
   const xpub = k.xpub.trim();
   if (!xpub) return k.name;
-  if (xpub.includes("[") || xpub.includes("/")) return xpub;
+  const tail = (k.childPath || `${k.multipath || "<0;1>"}/*`).replace(/^\//, "");
+  if (xpub.includes("[") || xpub.includes("/")) {
+    return RANGE_TAIL.test(xpub) ? xpub.replace(RANGE_TAIL, `/${tail}`) : `${xpub}/${tail}`;
+  }
   const path = (k.derivation || "48'/0'/0'/2'").replace(/^m\//, "");
   const fp = (k.fingerprint || "00000000").replace(/^#/, "").slice(0, 8);
-  const tail = (k.childPath || `${k.multipath || "<0;1>"}/*`).replace(/^\//, "");
   return `[${fp}/${path}]${xpub}/${tail}`;
 }
 
@@ -139,24 +143,28 @@ export function descriptorOrderVariants(
   keys: KeyEntry[],
   reuse = true,
   limit = 120,
-): { stages: Stage[]; descriptor: string; checksum: string; orders: string[] }[] {
+): { stages: Stage[]; descriptor: string; checksum: string; orders: string[]; childPath: string }[] {
   const variants = stageKeyOrderVariants(stages, limit);
   const seen = new Set<string>();
-  const out: { stages: Stage[]; descriptor: string; checksum: string; orders: string[] }[] = [];
+  const out: { stages: Stage[]; descriptor: string; checksum: string; orders: string[]; childPath: string }[] = [];
   for (const next of variants) {
     const { root } = compileStages(next, reuse);
     const compiled = compileDescriptor(root, keys, reuse);
     if (!compiled.ok) continue;
-    const hash = compiled.descriptor.lastIndexOf("#");
-    const checksum = hash >= 0 ? compiled.descriptor.slice(hash + 1) : "";
-    if (!checksum || seen.has(checksum)) continue;
-    seen.add(checksum);
-    out.push({
-      stages: next,
-      descriptor: compiled.descriptor,
-      checksum,
-      orders: next.map((s) => s.keys.join(" · ")),
-    });
+    for (const tail of CHILD_PATH_FORMS) {
+      const descriptor = rewriteDescriptorChildPath(compiled.descriptor, tail);
+      const hash = descriptor.lastIndexOf("#");
+      const checksum = hash >= 0 ? descriptor.slice(hash + 1) : "";
+      if (!checksum || seen.has(checksum)) continue;
+      seen.add(checksum);
+      out.push({
+        stages: next,
+        descriptor,
+        checksum,
+        childPath: tail,
+        orders: next.map((s) => s.keys.join(" · ")),
+      });
+    }
   }
   return out;
 }
