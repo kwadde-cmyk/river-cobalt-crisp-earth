@@ -7,6 +7,7 @@ import { numberLocale } from "@/lib/i18n";
 import { useStudio } from "@/store/studio";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -17,7 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useT } from "@/lib/use-t";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { NodeCheckCard } from "@/components/node-rpc";
@@ -129,6 +130,7 @@ function OrderVariants() {
   const setStages = useStudio((s) => s.setStages);
   const root = useStudio((s) => s.root);
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const count = useMemo(() => stageOrderCount(stages), [stages]);
   const compiled = useMemo(
     () => (root ? compileDescriptor(root, keys, reuseKeys) : null),
@@ -138,6 +140,15 @@ function OrderVariants() {
     if (!open || !stages.length) return [];
     return descriptorOrderVariants(stages, keys, reuseKeys, 120);
   }, [open, stages, keys, reuseKeys]);
+  const needle = query.trim().replace(/^#/, "").toLowerCase();
+  const hits = useMemo(() => {
+    if (!needle) return variants;
+    return variants.filter(
+      (v) =>
+        v.checksum.toLowerCase().includes(needle) ||
+        v.orders.some((row) => row.toLowerCase().includes(needle)),
+    );
+  }, [variants, needle]);
   if (count.total <= 1 && !count.capped) return null;
   const current =
     compiled?.ok && compiled.descriptor.includes("#")
@@ -146,7 +157,13 @@ function OrderVariants() {
   const shown = variants.length;
   return (
     <section>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (!next) setQuery("");
+        }}
+      >
         <DialogTrigger asChild>
           <Button variant="outline" className="w-full">
             {t("read.orders")}
@@ -164,39 +181,54 @@ function OrderVariants() {
           {shown < count.total ? (
             <p className="shrink-0 text-2xs text-fg-muted">{t("read.ordersCapped", { n: shown, total: count.total })}</p>
           ) : null}
-          <div className="mt-3 max-h-[min(28rem,calc(100dvh-14rem))] overflow-y-auto overscroll-contain pr-1">
+          <div className="relative shrink-0">
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-fg-muted" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t("read.orderSearch")}
+              className="pl-8 font-mono text-sm"
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </div>
+          <div className="mt-3 max-h-[min(28rem,calc(100dvh-16rem))] overflow-y-auto overscroll-contain pr-1">
             <ul className="space-y-1.5 pb-2">
-              {variants.map((v) => {
-                const active = v.checksum === current;
-                return (
-                  <li key={v.checksum}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setStages(v.stages);
-                        setOpen(false);
-                      }}
-                      className={`w-full rounded-lg border px-3 py-2 text-left ${
-                        active ? "border-border-strong bg-muted" : "border-border hover:bg-muted/50"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-mono text-sm text-fg">#{v.checksum}</span>
-                        <span className="text-2xs text-fg-muted">
-                          {active ? t("read.orderCurrent") : t("read.useOrder")}
-                        </span>
-                      </div>
-                      <ul className="mt-1 space-y-0.5">
-                        {v.orders.map((row, i) => (
-                          <li key={`${v.checksum}-${i}`} className="font-mono text-2xs text-fg-muted">
-                            {t("stages.n", { n: i + 1 })}: {row}
-                          </li>
-                        ))}
-                      </ul>
-                    </button>
-                  </li>
-                );
-              })}
+              {hits.length ? (
+                hits.map((v) => {
+                  const active = v.checksum === current;
+                  return (
+                    <li key={v.checksum}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStages(v.stages);
+                          setOpen(false);
+                        }}
+                        className={`w-full rounded-lg border px-3 py-2 text-left ${
+                          active ? "border-border-strong bg-muted" : "border-border hover:bg-muted/50"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-mono text-sm text-fg">#{v.checksum}</span>
+                          <span className="text-2xs text-fg-muted">
+                            {active ? t("read.orderCurrent") : t("read.useOrder")}
+                          </span>
+                        </div>
+                        <ul className="mt-1 space-y-0.5">
+                          {v.orders.map((row, i) => (
+                            <li key={`${v.checksum}-${i}`} className="font-mono text-2xs text-fg-muted">
+                              {t("stages.n", { n: i + 1 })}: {row}
+                            </li>
+                          ))}
+                        </ul>
+                      </button>
+                    </li>
+                  );
+                })
+              ) : (
+                <li className="px-1 py-6 text-center text-sm text-fg-muted">{t("read.orderNone")}</li>
+              )}
             </ul>
           </div>
         </DialogContent>
