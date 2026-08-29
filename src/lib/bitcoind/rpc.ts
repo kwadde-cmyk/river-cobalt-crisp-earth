@@ -1,4 +1,5 @@
 import { checksumOf, coreCanonicalBody, stripChecksum } from "../miniscript/checksum.ts";
+import { rewriteSortedMultiForCore } from "../miniscript/compile.ts";
 
 export interface BitcoindConfig {
   url: string;
@@ -43,16 +44,21 @@ export function normalizeRpcUrl(raw: string, network: "mainnet" | "testnet" = "m
 }
 
 export function splitCookie(user: string, pass: string): { username: string; password: string } {
-  if (pass.trim()) return { username: user, password: pass };
-  const m = user.trim().match(/^([^:]+):(.+)$/);
-  if (m) return { username: m[1]!, password: m[2]! };
-  return { username: user, password: pass };
+  const u = user.trim();
+  const p = pass.trim();
+  if (p) return { username: u, password: p };
+  const m = u.match(/^([^:]+):(.+)$/s);
+  if (m) return { username: m[1]!.trim(), password: m[2]!.trim() };
+  return { username: u, password: p };
 }
 
-function basicToken(user: string, pass: string): string {
+export function basicToken(user: string, pass: string): string {
   const raw = `${user}:${pass}`;
-  if (typeof btoa === "function") return btoa(raw);
-  return Buffer.from(raw, "utf8").toString("base64");
+  if (typeof Buffer !== "undefined") return Buffer.from(raw, "utf8").toString("base64");
+  const bytes = new TextEncoder().encode(raw);
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin);
 }
 
 export function looksLikeStartos(url: string): boolean {
@@ -162,7 +168,7 @@ export async function jsonRpc(
 ): Promise<unknown> {
   const { isBridgeOn, rpcViaBridge } = await import("./bridge.ts");
   if (isBridgeOn()) return rpcViaBridge(method, params);
-  if (await hostProxyAvailable()) return rpcViaHost(method, params);
+  if (await hostProxyAvailable()) return rpcViaHost(method, params, config);
   try {
     return await jsonRpcDirect(config, method, params);
   } catch (e) {
@@ -185,13 +191,19 @@ export async function hostProxyAvailable(): Promise<boolean> {
   return hostProxyMemo;
 }
 
-async function rpcViaHost(method: string, params: unknown[]): Promise<unknown> {
+async function rpcViaHost(method: string, params: unknown[], config: BitcoindConfig): Promise<unknown> {
+  const auth = splitCookie(config.username, config.password);
   const res = await fetch("/bitcoind-rpc", {
     method: "POST",
     headers: { "content-type": "application/json" },
     cache: "no-store",
-    body: JSON.stringify({ method, params }),
+    body: JSON.stringify({
+      method,
+      params,
+      auth: { user: auth.username, pass: auth.password },
+    }),
   });
+  if (res.status === 401) throw new Error("node.err.auth");
   const body = (await res.json().catch(() => null)) as RpcOk | RpcErr | null;
   if (!body) throw new Error("node.err.http");
   if (body.error) throw new Error(body.error.message || `RPC ${body.error.code}`);
@@ -266,7 +278,7 @@ export async function validateOnNode(
   config: BitcoindConfig,
   descriptor: string,
 ): Promise<NodeValidateResult> {
-  const payload = stripChecksum(descriptor);
+  const payload = rewriteSortedMultiForCore(stripChecksum(descriptor));
   const exportChecksum = checksumOf(payload);
   const info = (await jsonRpc(config, "getdescriptorinfo", [payload])) as {
     descriptor: string;

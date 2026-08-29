@@ -6,7 +6,7 @@ export function bitcoindUpstream() {
 }
 
 /**
- * @param {{ method?: string, params?: unknown[], id?: unknown }} input
+ * @param {{ method?: string, params?: unknown[], id?: unknown, auth?: { user?: string, username?: string, pass?: string, password?: string } }} input
  * @returns {Promise<{ status: number, body: string }>}
  */
 export async function forwardBitcoindRpc(input) {
@@ -18,8 +18,9 @@ export async function forwardBitcoindRpc(input) {
   if (!method) {
     return { status: 400, body: JSON.stringify({ error: { code: -32600, message: "method required" } }) };
   }
-  const user = String(process.env.BITCOIND_RPC_USER ?? process.env.BITCOIND_RPC_USERNAME ?? "");
-  const pass = String(process.env.BITCOIND_RPC_PASSWORD ?? "");
+  const fromForm = input?.auth && typeof input.auth === "object" ? input.auth : null;
+  const user = String(fromForm?.user ?? fromForm?.username ?? process.env.BITCOIND_RPC_USER ?? process.env.BITCOIND_RPC_USERNAME ?? "").trim();
+  const pass = String(fromForm?.pass ?? fromForm?.password ?? process.env.BITCOIND_RPC_PASSWORD ?? "").trim();
   const payload = JSON.stringify({
     jsonrpc: "1.0",
     id: input?.id ?? 1,
@@ -29,7 +30,7 @@ export async function forwardBitcoindRpc(input) {
   /** @type {Record<string, string>} */
   const headers = { "Content-Type": "text/plain", Accept: "application/json" };
   if (user) {
-    headers.Authorization = `Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}`;
+    headers.Authorization = `Basic ${Buffer.from(`${user}:${pass}`, "utf8").toString("base64")}`;
   }
   const res = await fetch(upstream, { method: "POST", headers, body: payload });
   const text = await res.text();

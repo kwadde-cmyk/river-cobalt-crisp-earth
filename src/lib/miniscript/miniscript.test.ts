@@ -37,7 +37,7 @@ import {
   sortKeyEntries,
 } from "./keys.ts";
 import { parseAny } from "./parser.ts";
-import { compileStages, describeStageSlots, inferStages, permutations, slotsForAccount, stageFormula, stageHighlightIds, stageIndicesForAccount, stageKeyOrderVariants } from "./stages.ts";
+import { compileStages, describeStageSlots, inferStages, permutations, slotsForAccount, sortedMultiAllowed, stageFormula, stageHighlightIds, stageIndicesForAccount, stageKeyOrderVariants } from "./stages.ts";
 import {
   compileBip388,
   formatBitboxJson,
@@ -687,7 +687,37 @@ describe("bip388", () => {
     assert.equal(node.kind, "multi");
     if (node.kind !== "multi") return;
     assert.equal(node.sorted, true);
-    assert.equal(compileMiniscript(node), "sortedmulti(2,A,B,C)");
+    assert.equal(compileMiniscript(node), "multi(2,A,B,C)");
+    const compiled = compileDescriptor(node, [], true);
+    assert.equal(compiled.ok, true);
+    assert.match(compiled.descriptor, /^wsh\(sortedmulti\(2,A,B,C\)\)#/);
+  });
+
+  it("does not emit nested sortedmulti — Core miniscript only allows multi()", () => {
+    const { root } = compileStages(
+      [
+        { id: "s1", delay: 0, k: 2, keys: ["A", "B"], sorted: true },
+        { id: "s2", delay: 144, k: 1, keys: ["C"], sorted: true },
+      ],
+      true,
+    );
+    const ms = compileMiniscript(root);
+    assert.equal(ms.includes("sortedmulti"), false);
+    assert.match(ms, /multi\(2,/);
+    const compiled = compileDescriptor(root, [], true);
+    assert.equal(compiled.descriptor.includes("sortedmulti"), false);
+    assert.equal(
+      sortedMultiAllowed([{ id: "s1", delay: 0, k: 2, keys: ["A", "B", "C"] }]),
+      true,
+    );
+    assert.equal(
+      sortedMultiAllowed([
+        { id: "s1", delay: 0, k: 2, keys: ["A", "B"] },
+        { id: "s2", delay: 144, k: 1, keys: ["C"] },
+      ]),
+      false,
+    );
+    assert.equal(sortedMultiAllowed([{ id: "s1", delay: 144, k: 2, keys: ["A", "B"] }]), false);
   });
 
   it("reads a bitbox xpub json onto a key slot", () => {

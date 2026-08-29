@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { compileDescriptor } from "@/lib/miniscript/compile";
 import { bookmarkletHref, bridgeScript, openNodeTab, originOf, watchBridge } from "@/lib/bitcoind/bridge";
 import { useBitcoind } from "@/store/bitcoind";
@@ -95,6 +95,7 @@ function NodeDialogBody() {
   const network = useStudio((s) => s.network);
   const [busy, setBusy] = useState(false);
   const [proxyOn, setProxyOn] = useState(false);
+  const passRef = useRef<HTMLInputElement>(null);
 
   const compiled = root ? compileDescriptor(root, keys, reuseKeys) : null;
   const ready = status === "ready";
@@ -124,7 +125,24 @@ function NodeDialogBody() {
         <DialogDescription>{t("node.blurb")}</DialogDescription>
       </DialogHeader>
 
-      <div className="space-y-3">
+      <form
+        className="space-y-3"
+        autoComplete="on"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const fd = new FormData(e.currentTarget);
+          const nextUrl = String(fd.get("url") ?? "").trim();
+          const nextUser = String(fd.get("username") ?? "").trim();
+          const nextPass = String(fd.get("password") ?? passRef.current?.value ?? "").trim();
+          patch({
+            url: nextUrl,
+            username: nextUser,
+            password: nextPass,
+            kind: looksLikeStartos(nextUrl) ? "startos" : kind,
+          });
+          void run(() => connectLive(network));
+        }}
+      >
         <div>
           <Label htmlFor="node-url">{t("node.url")}</Label>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -162,6 +180,8 @@ function NodeDialogBody() {
           </div>
           <Input
             id="node-url"
+            name="url"
+            autoComplete="url"
             value={url}
             onChange={(e) => {
               const next = e.target.value;
@@ -186,8 +206,11 @@ function NodeDialogBody() {
             <Label htmlFor="node-user">{t("node.user")}</Label>
             <Input
               id="node-user"
+              name="username"
+              autoComplete="username"
               value={username}
               onChange={(e) => patch({ username: e.target.value })}
+              onInput={(e) => patch({ username: e.currentTarget.value })}
               placeholder={startos ? "scriptwerk" : "__cookie__"}
               className="mt-1.5 font-mono text-xs"
             />
@@ -196,9 +219,12 @@ function NodeDialogBody() {
             <Label htmlFor="node-pass">{t("node.pass")}</Label>
             <Input
               id="node-pass"
+              ref={passRef}
+              name="password"
               type="password"
-              value={password}
-              onChange={(e) => patch({ password: e.target.value })}
+              autoComplete="current-password"
+              defaultValue={password}
+              onInput={(e) => patch({ password: e.currentTarget.value })}
               className="mt-1.5 font-mono text-xs"
             />
           </div>
@@ -213,20 +239,21 @@ function NodeDialogBody() {
 
         <div className="flex flex-wrap gap-2">
           {ready ? (
-            <Button variant="outline" onClick={disconnect}>
+            <Button type="button" variant="outline" onClick={disconnect}>
               {t("node.disconnect")}
             </Button>
           ) : (
             <>
-              <Button disabled={busy || status === "connecting"} onClick={() => void run(() => connectLive(network))}>
+              <Button type="submit" disabled={busy || status === "connecting"}>
                 {status === "connecting" ? t("node.loading.connect") : t("node.connect")}
               </Button>
-              <Button variant="outline" disabled={busy} onClick={connectDemo}>
+              <Button type="button" variant="outline" disabled={busy} onClick={connectDemo}>
                 {t("node.demo")}
               </Button>
             </>
           )}
           <Button
+            type="button"
             variant="secondary"
             disabled={busy || checking || !ready || !compiled?.ok}
             onClick={() =>
@@ -255,14 +282,14 @@ function NodeDialogBody() {
         ) : null}
         {errText && !trace ? <p className="text-xs text-danger">{errText}</p> : null}
         {error === "node.err.blocked" || error === "node.err.cors" || (status !== "ready" && trace?.steps.some((s) => s.status === "fail")) ? (
-          <Button variant="outline" size="sm" onClick={() => openNodeTab(nodeUrl)}>
+          <Button type="button" variant="outline" size="sm" onClick={() => openNodeTab(nodeUrl)}>
             {t("node.openCert")}
           </Button>
         ) : null}
         {bridge === "needed" || bridge === "on" ? <BridgePanel nodeUrl={nodeUrl} /> : null}
         {trace ? <TracePanel /> : null}
         {lastCheck ? <CheckResult /> : null}
-      </div>
+      </form>
     </DialogContent>
   );
 }

@@ -69,6 +69,7 @@ describe("bitcoind rpc helpers", () => {
   it("splits a cookie user:pass pair", () => {
     assert.deepEqual(splitCookie("__cookie__:abc123", ""), { username: "__cookie__", password: "abc123" });
     assert.deepEqual(splitCookie("satoshi", "secret"), { username: "satoshi", password: "secret" });
+    assert.deepEqual(splitCookie(" scriptwerk ", "  hunter2\n"), { username: "scriptwerk", password: "hunter2" });
   });
 });
 

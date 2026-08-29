@@ -1,4 +1,4 @@
-import { DELAY_PRESETS, defaultStages, nextStageDelay, stageFormula, type Stage } from "@/lib/miniscript/stages";
+import { DELAY_PRESETS, defaultStages, nextStageDelay, sortedMultiAllowed, stageFormula, type Stage } from "@/lib/miniscript/stages";
 import { blocksWhen, keyIsFilled, nextKeyName, type KeyEntry } from "@/lib/miniscript/keys";
 import { uid } from "@/lib/utils";
 import { useStudio } from "@/store/studio";
@@ -17,6 +17,7 @@ export function StageBuilder() {
   const selectedStageId = useStudio((s) => s.selectedStageId);
   const selectStage = useStudio((s) => s.selectStage);
 
+  const allowSorted = sortedMultiAllowed(stages);
   const pool = keys.map((k) => k.name);
 
   function patch(id: string, fn: (s: Stage) => Stage) {
@@ -34,7 +35,7 @@ export function StageBuilder() {
     const extra = nextKeyName([...pool, ...names]);
     names.push(extra);
     setStages([
-      ...stages,
+      ...stages.map((s) => ({ ...s, sorted: false })),
       {
         id: uid("st"),
         delay,
@@ -66,6 +67,7 @@ export function StageBuilder() {
                 pool={pool}
                 entries={keys}
                 canRemove={stages.length > 1}
+                allowSorted={allowSorted}
                 selected={selectedStageId === s.id}
                 onSelect={() => selectStage(s.id)}
                 onChange={(next) => patch(s.id, () => next)}
@@ -87,6 +89,7 @@ function StageCard({
   pool,
   entries,
   canRemove,
+  allowSorted,
   selected,
   onSelect,
   onChange,
@@ -97,6 +100,7 @@ function StageCard({
   pool: string[];
   entries: KeyEntry[];
   canRemove: boolean;
+  allowSorted: boolean;
   selected: boolean;
   onSelect: () => void;
   onChange: (s: Stage) => void;
@@ -250,28 +254,30 @@ function StageCard({
             + Key
           </button>
         </div>
-        <div className="mt-2 flex rounded-full border border-border p-0.5">
-          <button
-            type="button"
-            aria-pressed={!stage.sorted}
-            onClick={() => onChange({ ...stage, sorted: false })}
-            className={`h-8 flex-1 rounded-full px-2 text-2xs ${
-              !stage.sorted ? "bg-muted text-fg" : "text-fg-muted hover:text-fg"
-            }`}
-          >
-            {t("stages.unsorted")}
-          </button>
-          <button
-            type="button"
-            aria-pressed={Boolean(stage.sorted)}
-            onClick={() => onChange({ ...stage, sorted: true })}
-            className={`h-8 flex-1 rounded-full px-2 text-2xs ${
-              stage.sorted ? "bg-muted text-fg" : "text-fg-muted hover:text-fg"
-            }`}
-          >
-            {t("stages.sorted")}
-          </button>
-        </div>
+        {allowSorted ? (
+          <div className="mt-2 flex rounded-full border border-border p-0.5">
+            <button
+              type="button"
+              aria-pressed={!stage.sorted}
+              onClick={() => onChange({ ...stage, sorted: false })}
+              className={`h-8 flex-1 rounded-full px-2 text-2xs ${
+                !stage.sorted ? "bg-muted text-fg" : "text-fg-muted hover:text-fg"
+              }`}
+            >
+              {t("stages.unsorted")}
+            </button>
+            <button
+              type="button"
+              aria-pressed={Boolean(stage.sorted)}
+              onClick={() => onChange({ ...stage, sorted: true })}
+              className={`h-8 flex-1 rounded-full px-2 text-2xs ${
+                stage.sorted ? "bg-muted text-fg" : "text-fg-muted hover:text-fg"
+              }`}
+            >
+              {t("stages.sorted")}
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div className="mt-3" onClick={(e) => e.stopPropagation()}>
@@ -282,7 +288,10 @@ function StageCard({
           min={0}
           max={65535}
           value={stage.delay}
-          onChange={(e) => onChange({ ...stage, delay: Number(e.target.value) })}
+          onChange={(e) => {
+            const delay = Number(e.target.value);
+            onChange({ ...stage, delay, sorted: delay > 0 ? false : stage.sorted });
+          }}
           className="mt-1.5 font-mono"
         />
         <div className="mt-2 flex flex-wrap gap-1.5">
@@ -290,7 +299,7 @@ function StageCard({
             <button
               key={nDelay}
               type="button"
-              onClick={() => onChange({ ...stage, delay: nDelay })}
+              onClick={() => onChange({ ...stage, delay: nDelay, sorted: nDelay > 0 ? false : stage.sorted })}
               className={
                 stage.delay === nDelay
                   ? "h-8 rounded-full bg-muted px-2.5 text-2xs text-fg"

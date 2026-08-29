@@ -91,13 +91,17 @@ function paint(extra){
   if(extra){var el=document.getElementById("swlog");if(el)el.textContent=extra;}
 }
 function b64(s){
-  try{return btoa(s);}catch(e){
+  try{
+    var bytes=typeof TextEncoder!=="undefined"?new TextEncoder().encode(s):null;
+    if(bytes){var bin="";for(var i=0;i<bytes.length;i++)bin+=String.fromCharCode(bytes[i]);return btoa(bin);}
+    return btoa(s);
+  }catch(e){
     return btoa(unescape(encodeURIComponent(s)));
   }
 }
 function headers(){
   var h={"Content-Type":"text/plain","Accept":"application/json"};
-  if(auth&&auth.user)h.Authorization="Basic "+b64(String(auth.user)+":"+String(auth.pass||""));
+  if(auth&&(auth.user||auth.pass))h.Authorization="Basic "+b64(String(auth.user||"").trim()+":"+String(auth.pass||"").trim());
   return h;
 }
 function post(method,params,id){
@@ -106,7 +110,7 @@ function post(method,params,id){
     .then(function(r){return r.text().then(function(t){return {status:r.status,text:t};});})
     .catch(function(e){
       var h2={"Content-Type":"application/json"};
-      if(auth&&auth.user)h2.Authorization="Basic "+b64(String(auth.user)+":"+String(auth.pass||""));
+      if(auth&&(auth.user||auth.pass))h2.Authorization="Basic "+b64(String(auth.user||"").trim()+":"+String(auth.pass||"").trim());
       return fetch(rpc,{method:"POST",headers:h2,body:body,credentials:"omit",cache:"no-store"})
         .then(function(r){return r.text().then(function(t){return {status:r.status,text:t};});});
     });

@@ -18,8 +18,10 @@ function compileNode(node: MsNode): string {
       return `pk(${node.key})`;
     case "pkh":
       return `pkh(${node.key})`;
-    case "multi":
-      return `${node.sorted ? "sortedmulti" : "multi"}(${node.k},${node.keys.join(",")})`;
+    case "multi": {
+      const keys = node.sorted ? [...node.keys].sort((a, b) => a.localeCompare(b)) : node.keys;
+      return `multi(${node.k},${keys.join(",")})`;
+    }
     case "thresh":
       return `thresh(${node.k},${node.children.map(compileNode).join(",")})`;
     case "older":
@@ -127,9 +129,25 @@ export function compileDescriptor(
     };
   }
   const miniscript = compileMiniscript(node);
-  const inner = substituteKeys(miniscript, expandAliasKeys(node, keys, reuse));
+  const inner = rewriteSortedMultiForCore(substituteKeys(miniscript, expandAliasKeys(node, keys, reuse)), node);
   const descriptor = descsumCreate(`wsh(${inner})`);
   return { ok: true, miniscript, descriptor };
+}
+
+/**
+ * Bitcoin Core: `sortedmulti()` is a descriptor function, valid only as the entire
+ * `wsh(sortedmulti(...))` / `sh(sortedmulti(...))` script. Nested miniscript must use `multi()`.
+ */
+export function rewriteSortedMultiForCore(text: string, root?: MsNode): string {
+  const raw = text.trim();
+  const wrap = raw.match(/^(wsh|sh)\((.*)\)\s*$/is);
+  const inner = wrap ? wrap[2]! : raw;
+  const onlyTop =
+    (root?.kind === "multi" && Boolean(root.sorted)) ||
+    (/^sortedmulti\(/i.test(inner) && (inner.match(/sortedmulti\(/gi) ?? []).length === 1);
+  let next = inner.replace(/\bsortedmulti\(/gi, "multi(");
+  if (onlyTop) next = next.replace(/^multi\(/, "sortedmulti(");
+  return wrap ? `${wrap[1]!.toLowerCase()}(${next})` : next;
 }
 
 export function compileBsms(descriptor: string, firstAddress?: string): string {

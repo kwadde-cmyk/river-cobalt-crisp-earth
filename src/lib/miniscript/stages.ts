@@ -28,6 +28,17 @@ export function nextStageDelay(stages: Stage[]): number {
   return Math.min(65534, max);
 }
 
+/** Core accepts sortedmulti only as the entire wsh() script — one unlocked multi stage. */
+export function sortedMultiAllowed(stages: Stage[]): boolean {
+  const cleaned = cleanedStages(stages);
+  if (cleaned.length !== 1) return false;
+  const s = cleaned[0]!;
+  if (s.delay > 0) return false;
+  if (s.required?.length) return false;
+  const k = Math.min(Math.max(s.k, 1), s.keys.length);
+  return s.keys.length >= 2 && k >= 2;
+}
+
 function cleanedStages(stages: Stage[]) {
   return stages
     .map((s) => {
@@ -219,7 +230,7 @@ export function compileStages(
     }
     const k = Math.min(Math.max(s.k, 1), names.length);
     if (names.length === 1 && k === 1) return pk(names[0]!);
-    return { id: uid(), kind: "multi", k, keys: names, sorted: Boolean(s.sorted) };
+    return { id: uid(), kind: "multi", k, keys: names, sorted: Boolean(s.sorted) && sortedMultiAllowed(cleaned) };
   }
 
   function locked(s: (typeof cleaned)[number]): MsNode {
