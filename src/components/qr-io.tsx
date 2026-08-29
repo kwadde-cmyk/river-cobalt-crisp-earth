@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import jsQR from "jsqr";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Camera, FileUp, ImageUp } from "lucide-react";
 import { useT } from "@/lib/use-t";
 
@@ -9,6 +10,7 @@ export function QrPreview({ value, label, compact }: { value: string; label: str
   const { t } = useT();
   const [src, setSrc] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [big, setBig] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -21,7 +23,7 @@ export function QrPreview({ value, label, compact }: { value: string; label: str
     QRCode.toDataURL(value, {
       errorCorrectionLevel: value.length > 800 ? "L" : "M",
       margin: 1,
-      width: compact ? 200 : 320,
+      width: 640,
       color: { dark: "#0b0c0e", light: "#ffffff" },
     })
       .then((url) => {
@@ -33,18 +35,25 @@ export function QrPreview({ value, label, compact }: { value: string; label: str
     return () => {
       cancelled = true;
     };
-  }, [value, t, compact]);
+  }, [value, t]);
 
   return (
     <div className="flex flex-col items-center gap-3">
       {src ? (
-        <img
-          src={src}
-          alt={t("qr.alt", { label })}
-          className={compact ? "size-40 rounded-lg bg-paper p-2" : "size-64 rounded-lg bg-paper p-2"}
-          width={compact ? 160 : 256}
-          height={compact ? 160 : 256}
-        />
+        <button
+          type="button"
+          onClick={() => setBig(true)}
+          className="cursor-zoom-in rounded-lg bg-paper p-2"
+          title={t("qr.enlarge")}
+        >
+          <img
+            src={src}
+            alt={t("qr.alt", { label })}
+            className={compact ? "size-40" : "size-64"}
+            width={compact ? 160 : 256}
+            height={compact ? 160 : 256}
+          />
+        </button>
       ) : (
         <div
           className={
@@ -57,6 +66,14 @@ export function QrPreview({ value, label, compact }: { value: string; label: str
         </div>
       )}
       {error ? <p className="text-xs text-danger">{error}</p> : null}
+      <Dialog open={big} onOpenChange={setBig}>
+        <DialogContent className="flex w-[min(28rem,calc(100vw-1.5rem))] flex-col items-center gap-3 p-4">
+          <DialogTitle className="sr-only">{label}</DialogTitle>
+          {src ? (
+            <img src={src} alt={t("qr.alt", { label })} className="w-full rounded-lg bg-paper p-3" />
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

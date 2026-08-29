@@ -25,8 +25,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { QrPreview, QrScanner, FilePick } from "@/components/qr-io";
 import { HardwareButton } from "@/components/hardware-usb";
 import { NodeButton } from "@/components/node-rpc";
+import { useHardware } from "@/store/hardware";
 import { useT } from "@/lib/use-t";
-import { Download, FolderOpen, QrCode, Redo2, RotateCcw, Undo2 } from "lucide-react";
+import { Download, FolderOpen, QrCode, Redo2, RotateCcw, Undo2, Usb } from "lucide-react";
 import { toast } from "sonner";
 
 export function ImportExportBar() {
@@ -223,6 +224,10 @@ export function ImportExportBar() {
                   result={bip}
                   name={walletName}
                   onName={setWalletName}
+                  onUsb={() => {
+                    setExportOpen(false);
+                    useHardware.getState().setOpen(true);
+                  }}
                 />
               </TabsContent>
               <TabsContent value="bitbox" className="space-y-3">
@@ -231,6 +236,10 @@ export function ImportExportBar() {
                   result={bip}
                   name={walletName}
                   onName={setWalletName}
+                  onUsb={() => {
+                    setExportOpen(false);
+                    useHardware.getState().setOpen(true);
+                  }}
                 />
               </TabsContent>
               <TabsContent value="bsms" className="space-y-3">
@@ -265,11 +274,13 @@ function DeviceExport({
   result,
   name,
   onName,
+  onUsb,
 }: {
   kind: "ledger" | "bitbox";
   result: Bip388CompileResult | null;
   name: string;
   onName: (v: string) => void;
+  onUsb: () => void;
 }) {
   const { t } = useT();
   if (!result) return null;
@@ -302,6 +313,9 @@ function DeviceExport({
       ))}
       <QrPreview value={qrValue} label={kind === "ledger" ? "Ledger" : "BitBox"} compact />
       <p className="text-2xs text-fg-subtle">{t("export.register")}</p>
+      <Button variant="secondary" size="sm" onClick={onUsb}>
+        <Usb /> {t("export.openUsb")}
+      </Button>
       <div className="space-y-1">
         <p className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">
           {t("export.template")}

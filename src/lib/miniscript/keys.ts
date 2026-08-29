@@ -43,10 +43,8 @@ export function normalizeKeyEntry(k: KeyEntry): KeyEntry {
     ...k,
     multipath,
     childPath,
-    children: Array.isArray(k.children)
-      ? k.children.map((c) => ({ ...c, note: sanitizeKeyNote(c.note) }))
-      : [],
-    note: sanitizeKeyNote(k.note),
+    children: Array.isArray(k.children) ? k.children : [],
+    note: k.note ?? "",
   };
 }
 

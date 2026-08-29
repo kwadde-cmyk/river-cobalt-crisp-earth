@@ -1,6 +1,6 @@
 import type { MsNode } from "./ast.ts";
 import { collectKeys, hasHoles } from "./ast.ts";
-import { compileMiniscript, expandAliasKeys } from "./compile.ts";
+import { compileMiniscript, expandAliasKeys, rewriteSortedMultiForCore } from "./compile.ts";
 import {
   emptyKey,
   extractKeysFromTree,
@@ -183,33 +183,54 @@ export function walletPolicyToDescriptor(policy: Bip388Policy): string {
 }
 
 export function formatLedgerJson(policy: Bip388Policy): string {
-  const keyOrigins = policy.keys.map((k) => k.origin).filter(Boolean);
+  const prepared = toLedgerPolicy(policy);
+  const keyOrigins = prepared.keys.map((k) => k.origin).filter(Boolean);
   return `${JSON.stringify(
     {
-      name: policy.name,
+      name: prepared.name,
       format: "bip388",
       device: "ledger",
-      template: policy.template,
-      descriptor_template: policy.template,
+      template: prepared.template,
+      descriptor_template: prepared.template,
       keys: keyOrigins,
       keyOrigins,
-      keyNames: policy.keys.map((k) => k.label || k.name),
-      keyAliases: policy.keys.map((k) => k.name),
+      keyNames: prepared.keys.map((k) => k.label || k.name),
+      keyAliases: prepared.keys.map((k) => k.name),
     },
     null,
     2,
   )}\n`;
 }
 
+export function toLedgerTemplate(template: string): string {
+  const raw = template.replace(/#[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{8}$/i, "").trim();
+  const rewritten = rewriteSortedMultiForCore(raw);
+  const wrap = rewritten.match(/^wsh\((.*)\)\s*$/is);
+  let inner = wrap ? wrap[1]! : rewritten;
+  inner = inner.replace(/\/<(?:0;1|1;0)>\/*/g, "/**");
+  const nMulti = (inner.match(/\b(?:sorted)?multi\(/gi) ?? []).length;
+  const bare = /^(?:sorted)?multi\(/i.test(inner) && nMulti === 1;
+  inner = inner.replace(/\bsortedmulti\(/gi, "multi(");
+  if (bare) inner = inner.replace(/^multi\(/, "sortedmulti(");
+  return `wsh(${inner})`;
+}
+
 export function toLedgerPolicy(policy: Bip388Policy): Bip388Policy {
-  const name = policy.name
-    .trim()
-    .replace(/[^\x20-\x7e]/g, "")
-    .slice(0, 16) || "Scriptwerk";
+  const name =
+    policy.name
+      .trim()
+      .replace(/[^\x20-\x7e]/g, "")
+      .replace(/\s+/g, " ")
+      .slice(0, 64) || "Scriptwerk";
   const keys = policy.keys.map((k, index) => {
     const fingerprint = formatFingerprint(k.fingerprint);
     const derivation = (k.derivation || "").replace(/h/gi, "'").replace(/^m\//, "");
-    const xpub = k.xpub.trim().replace(/\/<[^>]+>\/\*$/, "").replace(/\/\*$/, "");
+    let xpub = k.xpub.trim();
+    if (!xpub && k.origin) {
+      const parsed = parseKeyExpr(k.origin);
+      xpub = parsed.xpub;
+    }
+    xpub = xpub.replace(/\/<[^>]+>\/\*$/, "").replace(/\/\*\*?$/, "").replace(/\/\*$/, "");
     const origin =
       fingerprint && derivation && xpub
         ? `[${fingerprint}/${derivation}]${xpub}`
@@ -223,7 +244,7 @@ export function toLedgerPolicy(policy: Bip388Policy): Bip388Policy {
   });
   return {
     name,
-    template: policy.template.replace(/\bmulti\(/g, "sortedmulti("),
+    template: toLedgerTemplate(policy.template),
     keys,
   };
 }

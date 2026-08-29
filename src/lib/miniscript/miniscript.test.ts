@@ -47,6 +47,7 @@ import {
   materializeWalletPolicy,
   parseScriptwerkBundle,
   parseWalletPolicy,
+  toLedgerPolicy,
   walletPolicyToDescriptor,
 } from "./bip388.ts";
 import { defaultAccountPath, formatOrigin, normalizeHwPath, pathToDerivation } from "../hw/types.ts";
@@ -279,14 +280,8 @@ describe("keys", () => {
     ]);
     const master = grouped.keys.find((k) => k.fingerprint === "deadbeef") ?? grouped.keys[0];
     assert.equal(master?.children[0]?.note, "");
-    assert.equal(normalizeKeyEntry({ ...emptyKey("B"), note: "A", children: [{ id: "c", path: "48'/0'/1'/2'", xpub: childXpub, fingerprint: "deadbeef", note: "A1" }] }).note, "");
-    assert.equal(
-      normalizeKeyEntry({
-        ...emptyKey("B"),
-        children: [{ id: "c", path: "48'/0'/1'/2'", xpub: childXpub, fingerprint: "deadbeef", note: "A" }],
-      }).children[0]?.note,
-      "",
-    );
+    assert.equal(sanitizeKeyNote("Ledger"), "Ledger");
+    assert.equal(normalizeKeyEntry({ ...emptyKey("B"), note: "Ledger" }).note, "Ledger");
   });
 
   it("keeps name, fingerprint and role as separate labels", () => {
@@ -576,10 +571,23 @@ describe("bip388", () => {
     const parsed = parseWalletPolicy(json);
     assert.ok(parsed);
     assert.match(parsed!.template, /@0\/\*\*/);
+    assert.match(parsed!.template, /sortedmulti\(2,@0\/\*\*,@1\/\*\*\)/);
     const { node, keys } = materializeWalletPolicy(parsed!, []);
     assert.equal(compileMiniscript(node), "multi(2,A,B)");
     assert.equal(keys[0]?.xpub, XPUB);
     assert.equal(keys[0]?.fingerprint.toLowerCase(), "deadbeef");
+  });
+
+  it("keeps nested ledger policies as multi(), not sortedmulti()", () => {
+    const { root } = compileStages([
+      { id: "s1", delay: 0, k: 2, keys: ["A", "B"] },
+      { id: "s2", delay: 144, k: 1, keys: ["A"] },
+    ]);
+    const compiled = compileBip388(root, [keyA, keyB]);
+    const ledger = toLedgerPolicy(compiled.policy);
+    assert.equal(ledger.template.includes("sortedmulti"), false);
+    assert.match(ledger.template, /wsh\(or_i\(and_v\(v:pk\(@0\/\*\*\),older\(144\)\),multi\(2,@0\/\*\*,@1\/\*\*\)\)\)/);
+    assert.match(ledger.keys[0]!.origin, /^\[deadbeef\/48'\/0'\/0'\/2'\]xpub/);
   });
 
   it("transports key labels through policy text and scriptwerk json", () => {
