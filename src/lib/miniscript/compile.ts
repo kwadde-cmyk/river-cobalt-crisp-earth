@@ -3,6 +3,7 @@ import { accountPathFrom, childForAccount } from "./keys.ts";
 import type { MsNode } from "./ast.ts";
 import { collectKeys, hasHoles } from "./ast.ts";
 import { descsumCreate } from "./checksum.ts";
+import { compileStages, stageKeyOrderVariants, type Stage } from "./stages.ts";
 
 export function compileMiniscript(node: MsNode, compact = true): string {
   const raw = compileNode(node);
@@ -131,4 +132,31 @@ export function compileBsms(descriptor: string, firstAddress?: string): string {
   const lines = ["BSMS 1.0", descriptor, "/0/*,/1/*"];
   if (firstAddress) lines.push(firstAddress);
   return lines.join("\n");
+}
+
+export function descriptorOrderVariants(
+  stages: Stage[],
+  keys: KeyEntry[],
+  reuse = true,
+  limit = 120,
+): { stages: Stage[]; descriptor: string; checksum: string; orders: string[] }[] {
+  const variants = stageKeyOrderVariants(stages, limit);
+  const seen = new Set<string>();
+  const out: { stages: Stage[]; descriptor: string; checksum: string; orders: string[] }[] = [];
+  for (const next of variants) {
+    const { root } = compileStages(next, reuse);
+    const compiled = compileDescriptor(root, keys, reuse);
+    if (!compiled.ok) continue;
+    const hash = compiled.descriptor.lastIndexOf("#");
+    const checksum = hash >= 0 ? compiled.descriptor.slice(hash + 1) : "";
+    if (!checksum || seen.has(checksum)) continue;
+    seen.add(checksum);
+    out.push({
+      stages: next,
+      descriptor: compiled.descriptor,
+      checksum,
+      orders: next.map((s) => s.keys.join(" · ")),
+    });
+  }
+  return out;
 }

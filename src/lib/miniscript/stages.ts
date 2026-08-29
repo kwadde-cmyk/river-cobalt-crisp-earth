@@ -10,6 +10,8 @@ export interface Stage {
   keys: string[];
   /** Keys that must sign (AND). Remaining keys are an OR / k-of-rest. */
   required?: string[];
+  /** If true, compile sortedmulti — pubkey order does not change the script. */
+  sorted?: boolean;
 }
 
 export const DELAY_PRESETS = [0, 1, 144, 1008, 4320, 52596, 60000, 65534] as const;
@@ -31,12 +33,13 @@ function cleanedStages(stages: Stage[]) {
     .map((s) => {
       const keys = s.keys.map((k) => k.trim()).filter(Boolean);
       const required = (s.required ?? []).map((k) => k.trim()).filter((k) => keys.includes(k));
+      const k = Math.max(1, Math.round(Number(s.k) || 1));
       return {
         ...s,
         keys,
-        required: required.length ? required : undefined,
+        k,
+        required: required.length && k < keys.length ? required : undefined,
         delay: Math.max(0, Math.round(Number(s.delay) || 0)),
-        k: Math.max(1, Math.round(Number(s.k) || 1)),
       };
     })
     .filter((s) => s.keys.length > 0)
@@ -157,7 +160,7 @@ export function compileStages(
     }
     const k = Math.min(Math.max(s.k, 1), names.length);
     if (names.length === 1 && k === 1) return pk(names[0]!);
-    return { id: uid(), kind: "multi", k, keys: names };
+    return { id: uid(), kind: "multi", k, keys: names, sorted: Boolean(s.sorted) };
   }
 
   function locked(s: (typeof cleaned)[number]): MsNode {
@@ -361,4 +364,61 @@ export function stageHighlightIds(
     if ((n.kind === "older" || n.kind === "after") && n.n === target.delay && target.delay > 0) ids.add(n.id);
   });
   return ids;
+}
+
+export function permutations<T>(items: T[]): T[][] {
+  if (items.length <= 1) return [items.slice()];
+  if (items.length > 5) return [items.slice()];
+  const out: T[][] = [];
+  const a = items.slice();
+  const c = new Array(a.length).fill(0);
+  out.push(a.slice());
+  let i = 0;
+  while (i < a.length) {
+    if (c[i]! < i) {
+      const j = i % 2 === 0 ? 0 : c[i]!;
+      const tmp = a[j]!;
+      a[j] = a[i]!;
+      a[i] = tmp;
+      out.push(a.slice());
+      c[i]! += 1;
+      i = 0;
+    } else {
+      c[i] = 0;
+      i += 1;
+    }
+  }
+  return out;
+}
+
+export function stageKeyOrderVariants(stages: Stage[], limit = 48): Stage[][] {
+  const cleaned = cleanedStages(stages);
+  if (!cleaned.length) return [];
+  const options = cleaned.map((s) => (s.sorted || s.keys.length <= 1 ? [s.keys] : permutations(s.keys)));
+  let product: string[][][] = [[]];
+  for (const list of options) {
+    product = product.flatMap((row) => list.map((keys) => [...row, keys]));
+    if (product.length > limit * 4) break;
+  }
+  return product.slice(0, limit).map((orders) =>
+    cleaned.map((s, i) => ({
+      ...s,
+      keys: orders[i] ?? s.keys,
+    })),
+  );
+}
+
+export function stageOrderCount(stages: Stage[]): { total: number; capped: boolean } {
+  const cleaned = cleanedStages(stages);
+  let total = 1;
+  let capped = false;
+  for (const s of cleaned) {
+    if (s.sorted || s.keys.length <= 1) continue;
+    if (s.keys.length > 5) capped = true;
+    const n = Math.min(s.keys.length, 5);
+    let f = 1;
+    for (let i = 2; i <= n; i++) f *= i;
+    total *= f;
+  }
+  return { total, capped };
 }

@@ -1,4 +1,5 @@
-import { compileBsms, compileDescriptor, compileMiniscript } from "@/lib/miniscript/compile";
+import { compileBsms, compileDescriptor, compileMiniscript, descriptorOrderVariants } from "@/lib/miniscript/compile";
+import { stageOrderCount } from "@/lib/miniscript/stages";
 import { explainPolicy } from "@/lib/miniscript/explain";
 import { validatePolicy } from "@/lib/miniscript/validate";
 import { blocksWhen } from "@/lib/miniscript/keys";
@@ -6,6 +7,14 @@ import { numberLocale } from "@/lib/i18n";
 import { useStudio } from "@/store/studio";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useT } from "@/lib/use-t";
 import { Check, Copy } from "lucide-react";
@@ -99,6 +108,8 @@ export function InterpreterPanel() {
 
         <NodeCheckCard />
 
+        <OrderVariants />
+
         <CopyBlock title="Miniscript" value={ms} />
         <CopyBlock
           title="Descriptor (wsh)"
@@ -107,6 +118,90 @@ export function InterpreterPanel() {
         <CopyBlock title="BSMS" value={compiled.ok ? compileBsms(compiled.descriptor) : ""} />
       </div>
     </ScrollArea>
+  );
+}
+
+function OrderVariants() {
+  const { t } = useT();
+  const stages = useStudio((s) => s.stages);
+  const keys = useStudio((s) => s.keys);
+  const reuseKeys = useStudio((s) => s.reuseKeys);
+  const setStages = useStudio((s) => s.setStages);
+  const root = useStudio((s) => s.root);
+  const [open, setOpen] = useState(false);
+  const count = useMemo(() => stageOrderCount(stages), [stages]);
+  const compiled = useMemo(
+    () => (root ? compileDescriptor(root, keys, reuseKeys) : null),
+    [root, keys, reuseKeys],
+  );
+  const variants = useMemo(() => {
+    if (!open || !stages.length) return [];
+    return descriptorOrderVariants(stages, keys, reuseKeys, 120);
+  }, [open, stages, keys, reuseKeys]);
+  if (count.total <= 1 && !count.capped) return null;
+  const current =
+    compiled?.ok && compiled.descriptor.includes("#")
+      ? compiled.descriptor.slice(compiled.descriptor.lastIndexOf("#") + 1)
+      : "";
+  const shown = variants.length;
+  return (
+    <section>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>
+          <Button variant="outline" className="w-full">
+            {t("read.orders")}
+            <span className="ml-auto font-mono text-2xs text-fg-muted">
+              {count.capped ? `${count.total}+` : count.total}
+            </span>
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[min(560px,calc(100vw-1.5rem))] flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
+            <DialogTitle>{t("read.orders")}</DialogTitle>
+            <DialogDescription>{t("read.ordersHint")}</DialogDescription>
+          </DialogHeader>
+          <p className="shrink-0 text-xs text-pretty text-fg-muted">{t("read.sortedNote")}</p>
+          {shown < count.total ? (
+            <p className="shrink-0 text-2xs text-fg-muted">{t("read.ordersCapped", { n: shown, total: count.total })}</p>
+          ) : null}
+          <div className="mt-3 max-h-[min(28rem,calc(100dvh-14rem))] overflow-y-auto overscroll-contain pr-1">
+            <ul className="space-y-1.5 pb-2">
+              {variants.map((v) => {
+                const active = v.checksum === current;
+                return (
+                  <li key={v.checksum}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStages(v.stages);
+                        setOpen(false);
+                      }}
+                      className={`w-full rounded-lg border px-3 py-2 text-left ${
+                        active ? "border-border-strong bg-muted" : "border-border hover:bg-muted/50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-sm text-fg">#{v.checksum}</span>
+                        <span className="text-2xs text-fg-muted">
+                          {active ? t("read.orderCurrent") : t("read.useOrder")}
+                        </span>
+                      </div>
+                      <ul className="mt-1 space-y-0.5">
+                        {v.orders.map((row, i) => (
+                          <li key={`${v.checksum}-${i}`} className="font-mono text-2xs text-fg-muted">
+                            {t("stages.n", { n: i + 1 })}: {row}
+                          </li>
+                        ))}
+                      </ul>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </section>
   );
 }
 

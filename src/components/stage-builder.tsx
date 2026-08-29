@@ -128,10 +128,23 @@ function StageCard({
     onChange({
       ...stage,
       keys,
-      k: Math.min(k, keys.length),
-      required: required.length ? required : undefined,
+      k: Math.min(Math.max(k, 1), keys.length),
+      required: required.length && k < keys.length ? required : undefined,
     });
   }
+
+  function moveKey(name: string, dir: -1 | 1) {
+    const i = stage.keys.indexOf(name);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= stage.keys.length) return;
+    const keys = [...stage.keys];
+    const tmp = keys[i]!;
+    keys[i] = keys[j]!;
+    keys[j] = tmp;
+    onChange({ ...stage, keys });
+  }
+
+  const shown = [...stage.keys, ...pool.filter((n) => !stage.keys.includes(n))];
 
   return (
     <article
@@ -180,30 +193,53 @@ function StageCard({
 
       <div className="mt-3" onClick={(e) => e.stopPropagation()}>
         <Label>{t("stages.inStage")}</Label>
+        <p className="mt-0.5 text-2xs text-pretty text-fg-muted">{t("stages.keyHint")}</p>
         <div className="mt-1.5 flex flex-wrap gap-1.5">
-          {Array.from(new Set([...pool, ...stage.keys])).map((name) => {
+          {shown.map((name) => {
             const on = stage.keys.includes(name);
+            const must = Boolean(on && k < n && stage.required?.includes(name));
             const entry = byName.get(name);
             const filled = entry ? keyIsFilled(entry) : false;
+            const idx = stage.keys.indexOf(name);
             return (
-              <button
-                key={name}
-                type="button"
-                onClick={() => toggleKey(name)}
-                className={
-                  on
-                    ? stage.required?.includes(name)
-                      ? "h-9 rounded-full bg-primary px-3 font-mono text-xs text-primary-foreground ring-1 ring-primary"
-                      : "h-9 rounded-full bg-primary px-3 font-mono text-xs text-primary-foreground"
-                    : "h-9 rounded-full border border-border px-3 font-mono text-xs text-fg-muted hover:bg-muted hover:text-fg"
-                }
-              >
-                {name}
-                {stage.required?.includes(name) ? (
-                  <span className="ml-1 text-[10px] opacity-80">{t("stages.must")}</span>
+              <span key={name} className="inline-flex items-center">
+                {on && idx > 0 ? (
+                  <button
+                    type="button"
+                    className="h-9 w-7 rounded-l-full bg-primary/85 text-primary-foreground hover:bg-primary"
+                    aria-label={t("stages.moveLeft")}
+                    onClick={() => moveKey(name, -1)}
+                  >
+                    ‹
+                  </button>
                 ) : null}
-                {filled ? <span className="ml-1.5 inline-block size-1.5 rounded-full bg-current opacity-80" /> : null}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => toggleKey(name)}
+                  title={must ? t("stages.mustHint") : undefined}
+                  className={
+                    on
+                      ? `h-9 bg-primary px-3 font-mono text-xs text-primary-foreground ${
+                          idx > 0 ? "" : "rounded-l-full"
+                        } ${idx >= 0 && idx < n - 1 ? "" : "rounded-r-full"}`
+                      : "h-9 rounded-full border border-border px-3 font-mono text-xs text-fg-muted hover:bg-muted hover:text-fg"
+                  }
+                >
+                  {name}
+                  {must ? "*" : ""}
+                  {filled ? <span className="ml-1.5 inline-block size-1.5 rounded-full bg-current opacity-80" /> : null}
+                </button>
+                {on && idx >= 0 && idx < n - 1 ? (
+                  <button
+                    type="button"
+                    className="h-9 w-7 rounded-r-full bg-primary/85 text-primary-foreground hover:bg-primary"
+                    aria-label={t("stages.moveRight")}
+                    onClick={() => moveKey(name, 1)}
+                  >
+                    ›
+                  </button>
+                ) : null}
+              </span>
             );
           })}
           <button
@@ -212,6 +248,28 @@ function StageCard({
             className="h-9 rounded-full border border-dashed border-border px-3 text-xs text-fg-muted hover:bg-muted hover:text-fg"
           >
             + Key
+          </button>
+        </div>
+        <div className="mt-2 flex rounded-full border border-border p-0.5">
+          <button
+            type="button"
+            aria-pressed={!stage.sorted}
+            onClick={() => onChange({ ...stage, sorted: false })}
+            className={`h-8 flex-1 rounded-full px-2 text-2xs ${
+              !stage.sorted ? "bg-muted text-fg" : "text-fg-muted hover:text-fg"
+            }`}
+          >
+            {t("stages.unsorted")}
+          </button>
+          <button
+            type="button"
+            aria-pressed={Boolean(stage.sorted)}
+            onClick={() => onChange({ ...stage, sorted: true })}
+            className={`h-8 flex-1 rounded-full px-2 text-2xs ${
+              stage.sorted ? "bg-muted text-fg" : "text-fg-muted hover:text-fg"
+            }`}
+          >
+            {t("stages.sorted")}
           </button>
         </div>
       </div>

@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { checksumOf, coreCanonicalBody, descsumCheck, descsumCreate, stripChecksum } from "./checksum.ts";
-import { compileDescriptor, compileMiniscript, expandAliasKeys } from "./compile.ts";
+import {
+  compileDescriptor,
+  compileMiniscript,
+  descriptorOrderVariants,
+  expandAliasKeys,
+} from "./compile.ts";
 import { explainPolicy } from "./explain.ts";
 import {
   applyKeyMaterial,
@@ -27,7 +32,7 @@ import {
   sortKeyEntries,
 } from "./keys.ts";
 import { parseAny } from "./parser.ts";
-import { compileStages, inferStages, stageFormula, stageHighlightIds } from "./stages.ts";
+import { compileStages, inferStages, permutations, stageFormula, stageHighlightIds, stageKeyOrderVariants } from "./stages.ts";
 import {
   compileBip388,
   formatBitboxJson,
@@ -349,6 +354,21 @@ describe("stages", () => {
     assert.equal(descsumCheck(compiled.descriptor), true);
     assert.match(compiled.descriptor, /deadbeef/);
     assert.equal(compiled.descriptor.includes("A1") || compiled.descriptor.includes(XPUB), true);
+  });
+
+  it("changes the checksum when multi keys are reordered, not when sorted", () => {
+    assert.equal(permutations(["A", "B"]).length, 2);
+    const stages = [{ id: "s1", delay: 0, k: 2, keys: ["A", "B", "C"] }];
+    const keys = [
+      { ...emptyKey("A"), xpub: XPUB, fingerprint: "aaaaaaa1", derivation: "48'/0'/0'/2'" },
+      { ...emptyKey("B"), xpub: XPUB.replace("Bosf", "Bosg"), fingerprint: "bbbbbbb2", derivation: "48'/0'/0'/2'" },
+      { ...emptyKey("C"), xpub: XPUB.replace("Bosf", "Bosh"), fingerprint: "ccccccc3", derivation: "48'/0'/0'/2'" },
+    ];
+    const variants = descriptorOrderVariants(stages, keys, true, 12);
+    assert.ok(variants.length >= 2);
+    assert.equal(new Set(variants.map((v) => v.checksum)).size, variants.length);
+    const sorted = descriptorOrderVariants([{ ...stages[0]!, sorted: true }], keys, true, 12);
+    assert.equal(sorted.length, 1);
   });
 
   it("uses distinct child accounts when reuse is off", () => {
