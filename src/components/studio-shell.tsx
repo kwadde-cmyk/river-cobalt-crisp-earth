@@ -334,20 +334,18 @@ function LangSwitch({
   label: string;
 }) {
   return (
-    <div
-      role="group"
-      aria-label={label}
-      className="ml-auto flex shrink-0 rounded-full border border-border p-0.5"
-    >
+    <div role="group" aria-label={label} className="ml-auto flex shrink-0 flex-wrap gap-1.5">
       {(["de", "en"] as const).map((code) => (
         <button
           key={code}
           type="button"
           aria-pressed={locale === code}
           onClick={() => setLocale(code)}
-          className={`h-8 min-w-9 rounded-full px-2.5 font-mono text-2xs tracking-wide ${
-            locale === code ? "bg-muted text-fg" : "text-fg-muted hover:text-fg"
-          }`}
+          className={
+            locale === code
+              ? "h-9 min-w-9 rounded-full bg-primary px-2.5 font-mono text-2xs tracking-wide text-primary-foreground"
+              : "h-9 min-w-9 rounded-full border border-border px-2.5 font-mono text-2xs tracking-wide text-fg-muted hover:bg-muted hover:text-fg"
+          }
         >
           {code.toUpperCase()}
         </button>

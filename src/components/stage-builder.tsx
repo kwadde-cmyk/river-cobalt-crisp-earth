@@ -121,7 +121,13 @@ function StageCard({
       used.push(name);
     }
     if (keys.length > count) keys = keys.slice(0, count);
-    onChange({ ...stage, keys, k: Math.min(k, keys.length) });
+    const required = (stage.required ?? []).filter((x) => keys.includes(x));
+    onChange({
+      ...stage,
+      keys,
+      k: Math.min(k, keys.length),
+      required: required.length ? required : undefined,
+    });
   }
 
   function toggleKey(name: string) {
@@ -134,6 +140,28 @@ function StageCard({
       keys,
       k: Math.min(Math.max(k, 1), keys.length),
       required: required.length && k < keys.length ? required : undefined,
+    });
+  }
+
+  function toggleRequired(name: string) {
+    if (!stage.keys.includes(name) || n < 2) return;
+    const cur = stage.required ?? [];
+    const on = cur.includes(name);
+    let required = on ? cur.filter((x) => x !== name) : [...cur, name];
+    required = required.filter((x) => stage.keys.includes(x));
+    let nextK = k;
+    if (required.length && nextK <= required.length) {
+      nextK = Math.min(n, required.length + 1);
+    }
+    if (nextK >= n) {
+      onChange({ ...stage, k: nextK, required: undefined, sorted: false });
+      return;
+    }
+    onChange({
+      ...stage,
+      k: nextK,
+      required: required.length ? required : undefined,
+      sorted: required.length ? false : stage.sorted,
     });
   }
 
@@ -191,7 +219,9 @@ function StageCard({
           value={k}
           min={1}
           max={Math.max(n, 1)}
-          onChange={(v) => onChange({ ...stage, k: v })}
+          onChange={(v) =>
+            onChange({ ...stage, k: v, required: v < n ? stage.required : undefined })
+          }
         />
       </div>
 
@@ -220,7 +250,6 @@ function StageCard({
                 <button
                   type="button"
                   onClick={() => toggleKey(name)}
-                  title={must ? t("stages.mustHint") : undefined}
                   className={
                     on
                       ? `h-9 bg-primary px-3 font-mono text-xs text-primary-foreground ${
@@ -230,7 +259,7 @@ function StageCard({
                   }
                 >
                   {name}
-                  {must ? "*" : ""}
+                  {must ? <span className="ml-1 opacity-80">*</span> : null}
                   {filled ? <span className="ml-1.5 inline-block size-1.5 rounded-full bg-current opacity-80" /> : null}
                 </button>
                 {on && idx >= 0 && idx < n - 1 ? (
@@ -255,14 +284,16 @@ function StageCard({
           </button>
         </div>
         {allowSorted ? (
-          <div className="mt-2 flex rounded-full border border-border p-0.5">
+          <div className="mt-2 flex flex-wrap gap-1.5">
             <button
               type="button"
               aria-pressed={!stage.sorted}
               onClick={() => onChange({ ...stage, sorted: false })}
-              className={`h-8 flex-1 rounded-full px-2 text-2xs ${
-                !stage.sorted ? "bg-muted text-fg" : "text-fg-muted hover:text-fg"
-              }`}
+              className={
+                !stage.sorted
+                  ? "h-9 rounded-full bg-primary px-3 text-xs text-primary-foreground"
+                  : "h-9 rounded-full border border-border px-3 text-xs text-fg-muted hover:bg-muted hover:text-fg"
+              }
             >
               {t("stages.unsorted")}
             </button>
@@ -270,15 +301,49 @@ function StageCard({
               type="button"
               aria-pressed={Boolean(stage.sorted)}
               onClick={() => onChange({ ...stage, sorted: true })}
-              className={`h-8 flex-1 rounded-full px-2 text-2xs ${
-                stage.sorted ? "bg-muted text-fg" : "text-fg-muted hover:text-fg"
-              }`}
+              className={
+                stage.sorted
+                  ? "h-9 rounded-full bg-primary px-3 text-xs text-primary-foreground"
+                  : "h-9 rounded-full border border-border px-3 text-xs text-fg-muted hover:bg-muted hover:text-fg"
+              }
             >
               {t("stages.sorted")}
             </button>
           </div>
         ) : null}
       </div>
+
+      {n >= 2 ? (
+      <div className="mt-3" onClick={(e) => e.stopPropagation()}>
+        <Label>{t("stages.mustRow")}</Label>
+        {k >= n ? (
+          <p className="mt-0.5 text-2xs text-pretty text-fg-muted">{t("stages.mustAll")}</p>
+        ) : (
+          <p className="mt-0.5 text-2xs text-pretty text-fg-muted">{t("stages.mustRowHint")}</p>
+        )}
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {stage.keys.map((name) => {
+            const on = k >= n || Boolean(stage.required?.includes(name));
+            return (
+              <button
+                key={`must-${name}`}
+                type="button"
+                disabled={k >= n}
+                aria-pressed={on}
+                onClick={() => toggleRequired(name)}
+                className={
+                  on
+                    ? "h-9 rounded-full bg-primary px-3 font-mono text-xs text-primary-foreground disabled:opacity-90"
+                    : "h-9 rounded-full border border-border px-3 font-mono text-xs text-fg-muted hover:bg-muted hover:text-fg"
+                }
+              >
+                {name}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      ) : null}
 
       <div className="mt-3" onClick={(e) => e.stopPropagation()}>
         <Label htmlFor={`delay-${stage.id}`}>{t("stages.timelock")}</Label>

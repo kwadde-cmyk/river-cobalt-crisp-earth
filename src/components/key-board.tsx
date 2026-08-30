@@ -73,18 +73,16 @@ export function KeyBoard({ fill = false }: { fill?: boolean }) {
             {t("keys.reuse")}
           </span>
           <div className="flex items-center gap-2">
-            <div
-              role="group"
-              aria-label={t("keys.reuse")}
-              className="flex shrink-0 rounded-full border border-border p-0.5"
-            >
+            <div role="group" aria-label={t("keys.reuse")} className="flex flex-wrap gap-1.5">
               <button
                 type="button"
                 aria-pressed={!reuseKeys}
                 onClick={() => setReuseKeys(false)}
-                className={`h-8 rounded-full px-3 text-xs ${
-                  !reuseKeys ? "bg-muted text-fg" : "text-fg-muted hover:text-fg"
-                }`}
+                className={
+                  !reuseKeys
+                    ? "h-9 rounded-full bg-primary px-3 text-xs text-primary-foreground"
+                    : "h-9 rounded-full border border-border px-3 text-xs text-fg-muted hover:bg-muted hover:text-fg"
+                }
               >
                 {t("keys.reuseOffShort")}
               </button>
@@ -92,9 +90,11 @@ export function KeyBoard({ fill = false }: { fill?: boolean }) {
                 type="button"
                 aria-pressed={reuseKeys}
                 onClick={() => setReuseKeys(true)}
-                className={`h-8 rounded-full px-3 text-xs ${
-                  reuseKeys ? "bg-muted text-fg" : "text-fg-muted hover:text-fg"
-                }`}
+                className={
+                  reuseKeys
+                    ? "h-9 rounded-full bg-primary px-3 text-xs text-primary-foreground"
+                    : "h-9 rounded-full border border-border px-3 text-xs text-fg-muted hover:bg-muted hover:text-fg"
+                }
               >
                 {t("keys.reuseOnShort")}
               </button>
@@ -102,18 +102,16 @@ export function KeyBoard({ fill = false }: { fill?: boolean }) {
             <NestedKeyStack present={childPresent} total={Math.max(childNeeded, childPresent)} />
           </div>
         </div>
-        <div
-          role="group"
-          aria-label={t("keys.network")}
-          className="ml-auto flex shrink-0 rounded-full border border-border p-0.5"
-        >
+        <div role="group" aria-label={t("keys.network")} className="ml-auto flex shrink-0 flex-wrap gap-1.5">
           <button
             type="button"
             aria-pressed={network === "mainnet"}
             onClick={() => setNetwork("mainnet")}
-            className={`h-8 rounded-full px-3 text-xs ${
-              network === "mainnet" ? "bg-muted text-fg" : "text-fg-muted hover:text-fg"
-            }`}
+            className={
+              network === "mainnet"
+                ? "h-9 rounded-full bg-primary px-3 text-xs text-primary-foreground"
+                : "h-9 rounded-full border border-border px-3 text-xs text-fg-muted hover:bg-muted hover:text-fg"
+            }
           >
             Mainnet
           </button>
@@ -121,9 +119,11 @@ export function KeyBoard({ fill = false }: { fill?: boolean }) {
             type="button"
             aria-pressed={network === "testnet"}
             onClick={() => setNetwork("testnet")}
-            className={`h-8 rounded-full px-3 text-xs ${
-              network === "testnet" ? "bg-muted text-fg" : "text-fg-muted hover:text-fg"
-            }`}
+            className={
+              network === "testnet"
+                ? "h-9 rounded-full bg-primary px-3 text-xs text-primary-foreground"
+                : "h-9 rounded-full border border-border px-3 text-xs text-fg-muted hover:bg-muted hover:text-fg"
+            }
           >
             Testnet
           </button>
