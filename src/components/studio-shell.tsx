@@ -305,7 +305,11 @@ function MountWhenVisible({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [show, setShow] = useState(true);
+  const [show, setShow] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const wide = window.matchMedia("(min-width: 1024px)").matches;
+    return dataLayout === "desktop" ? wide : !wide;
+  });
   useEffect(() => {
     const el = ref.current;
     if (!el) return;

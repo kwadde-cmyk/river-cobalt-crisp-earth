@@ -16,6 +16,8 @@ export function StageBuilder() {
   const setStages = useStudio((s) => s.setStages);
   const selectedStageId = useStudio((s) => s.selectedStageId);
   const selectStage = useStudio((s) => s.selectStage);
+  const nesting = useStudio((s) => s.nesting);
+  const setNesting = useStudio((s) => s.setNesting);
 
   const allowSorted = sortedMultiAllowed(stages);
   const pool = keys.map((k) => k.name);
@@ -50,6 +52,38 @@ export function StageBuilder() {
       <div className="px-4 pt-4 pb-2">
         <p className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("stages.title")}</p>
         <p className="mt-1 text-xs text-pretty text-fg-muted">{t("stages.blurb")}</p>
+        {stages.length > 1 ? (
+          <div className="mt-3">
+            <p className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("stages.nest")}</p>
+            <p className="mt-0.5 text-2xs text-pretty text-fg-muted">{t("stages.nestHint")}</p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                aria-pressed={nesting === "late"}
+                onClick={() => setNesting("late")}
+                className={
+                  nesting === "late"
+                    ? "h-9 rounded-full bg-primary px-3 text-xs text-primary-foreground"
+                    : "h-9 rounded-full border border-border px-3 text-xs text-fg-muted hover:bg-muted hover:text-fg"
+                }
+              >
+                {t("stages.nestLate")}
+              </button>
+              <button
+                type="button"
+                aria-pressed={nesting === "early"}
+                onClick={() => setNesting("early")}
+                className={
+                  nesting === "early"
+                    ? "h-9 rounded-full bg-primary px-3 text-xs text-primary-foreground"
+                    : "h-9 rounded-full border border-border px-3 text-xs text-fg-muted hover:bg-muted hover:text-fg"
+                }
+              >
+                {t("stages.nestEarly")}
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
       <ScrollArea className="min-h-0 flex-1 px-3 pb-4">
         <div className="space-y-3">
@@ -220,7 +254,7 @@ function StageCard({
           min={1}
           max={Math.max(n, 1)}
           onChange={(v) =>
-            onChange({ ...stage, k: v, required: v < n ? stage.required : undefined })
+            onChange({ ...stage, k: v, required: v < n ? stage.required : undefined, andv: v >= n ? stage.andv : undefined })
           }
         />
       </div>
@@ -313,6 +347,69 @@ function StageCard({
         ) : null}
       </div>
 
+      <div className="mt-3" onClick={(e) => e.stopPropagation()}>
+        <Label>{t("stages.pubkey")}</Label>
+        <p className="mt-0.5 text-2xs text-pretty text-fg-muted">{t("stages.pkHint")}</p>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            aria-pressed={!stage.hash}
+            onClick={() => onChange({ ...stage, hash: false })}
+            className={
+              !stage.hash
+                ? "h-9 rounded-full bg-primary px-3 font-mono text-xs text-primary-foreground"
+                : "h-9 rounded-full border border-border px-3 font-mono text-xs text-fg-muted hover:bg-muted hover:text-fg"
+            }
+          >
+            pk
+          </button>
+          <button
+            type="button"
+            aria-pressed={Boolean(stage.hash)}
+            onClick={() => onChange({ ...stage, hash: true, sorted: false, andv: false })}
+            className={
+              stage.hash
+                ? "h-9 rounded-full bg-primary px-3 font-mono text-xs text-primary-foreground"
+                : "h-9 rounded-full border border-border px-3 font-mono text-xs text-fg-muted hover:bg-muted hover:text-fg"
+            }
+          >
+            pkh
+          </button>
+        </div>
+      </div>
+
+      {n >= 2 && k >= n && !stage.hash ? (
+        <div className="mt-3" onClick={(e) => e.stopPropagation()}>
+          <Label>{t("stages.andv")}</Label>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              aria-pressed={!stage.andv}
+              onClick={() => onChange({ ...stage, andv: false })}
+              className={
+                !stage.andv
+                  ? "h-9 rounded-full bg-primary px-3 font-mono text-xs text-primary-foreground"
+                  : "h-9 rounded-full border border-border px-3 font-mono text-xs text-fg-muted hover:bg-muted hover:text-fg"
+              }
+            >
+              {t("stages.asMulti")}
+            </button>
+            <button
+              type="button"
+              aria-pressed={Boolean(stage.andv)}
+              onClick={() => onChange({ ...stage, andv: true, sorted: false })}
+              className={
+                stage.andv
+                  ? "h-9 rounded-full bg-primary px-3 font-mono text-xs text-primary-foreground"
+                  : "h-9 rounded-full border border-border px-3 font-mono text-xs text-fg-muted hover:bg-muted hover:text-fg"
+              }
+            >
+              {t("stages.asAndv")}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {n >= 2 ? (
       <div className="mt-3" onClick={(e) => e.stopPropagation()}>
         <Label>{t("stages.mustRow")}</Label>
@@ -354,7 +451,7 @@ function StageCard({
           max={65535}
           value={stage.delay}
           onChange={(e) => {
-            const delay = Number(e.target.value);
+            const delay = Math.max(0, Math.min(65535, Number(e.target.value) || 0));
             onChange({ ...stage, delay, sorted: delay > 0 ? false : stage.sorted });
           }}
           className="mt-1.5 font-mono"

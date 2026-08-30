@@ -298,6 +298,16 @@ function multipathFromChildPath(childPath: string): string {
   return "<0;1>";
 }
 
+/** Liana-style: occurrence 1 = /<0;1>/*, 2 = /<2;3>/*, … Form from `base`, always count from 0. */
+export function reuseBranchPath(base: string | undefined, occurrence: number): string {
+  const n = Math.max(1, occurrence);
+  const compact = (base || "<0;1>/*").replace(/^\//, "");
+  const single = /^\d+\/\*$/.test(compact);
+  const lo = 2 * (n - 1);
+  if (single) return `${lo}/*`;
+  return `<${lo};${lo + 1}>/*`;
+}
+
 export function looksLikePolicy(text: string): boolean {
   const t = text.trim();
   if (/^BSMS/i.test(t)) return true;

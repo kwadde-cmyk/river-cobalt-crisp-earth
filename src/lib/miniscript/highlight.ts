@@ -24,7 +24,7 @@ export function descriptorChecksums(desc: string): { path: string; checksum: str
   if (!raw) return [];
   const seen = new Set<string>();
   const out: { path: string; checksum: string }[] = [];
-  const forms = /\/<(?:0;1|1;0)>\//.test(raw) || /\/0\/\*/.test(raw) ? CHILD_PATH_FORMS : ([""] as const);
+  const forms = /\/<\d+;\d+>\//.test(raw) || /\/\d+\/\*/.test(raw) ? CHILD_PATH_FORMS : ([""] as const);
   for (const form of forms) {
     const next = form ? rewriteDescriptorChildPath(desc, form) : descsumSafe(desc);
     const cs = checksumOf(next);

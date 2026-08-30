@@ -71,17 +71,18 @@ export function checksumOf(s: string): string {
 /** Bitcoin Core getdescriptorinfo ToString() keeps the first multipath branch. */
 export function coreCanonicalBody(s: string): string {
   return stripChecksum(s)
-    .replaceAll("/<0;1>/", "/0/")
-    .replaceAll("/<1;0>/", "/0/")
+    .replace(/\/<(\d+);\d+>\//g, "/$1/")
     .replace(/\[([^\]]*)\]/g, (_m, inner: string) => `[${inner.replace(/h/g, "'")}]`);
 }
 
 export const CHILD_PATH_FORMS = ["<0;1>/*", "0/*"] as const;
 
-const RANGE_TAIL = /\/(?:<[^>]+>|\d+)\/\*/g;
-
 export function rewriteDescriptorChildPath(desc: string, tail: string): string {
-  const body = stripChecksum(desc).replace(RANGE_TAIL, `/${tail.replace(/^\//, "")}`);
+  const wantMulti = tail.replace(/^\//, "").includes("<");
+  const body = stripChecksum(desc).replace(/\/(?:<(\d+);(\d+)>|(\d+))\/\*/g, (_m, a, _b, s) => {
+    const lo = a != null ? Number(a) : Number(s);
+    return wantMulti ? `/<${lo};${lo + 1}>/*` : `/${lo}/*`;
+  });
   return descsumCreate(body);
 }
 

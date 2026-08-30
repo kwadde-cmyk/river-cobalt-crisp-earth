@@ -69,13 +69,9 @@ export function ZoomPane({
   useEffect(() => {
     const el = viewportRef.current;
     if (!el) return;
-    let lastW = 0;
-    let lastH = 0;
     const ro = new ResizeObserver((entries) => {
       const cr = entries[0]?.contentRect;
-      if (cr.width < 16 || cr.height < 16) return;
-      lastW = cr.width;
-      lastH = cr.height;
+      if (!cr || cr.width < 16 || cr.height < 16) return;
       if (!dirtyRef.current) fit();
     });
     ro.observe(el);

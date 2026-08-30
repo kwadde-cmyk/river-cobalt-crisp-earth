@@ -1,9 +1,9 @@
-import { compileBsms, compileDescriptor, compileMiniscript, descriptorOrderVariants } from "@/lib/miniscript/compile";
-import { descriptorChecksums, highlightScript, peekScript, type ScriptSpan } from "@/lib/miniscript/highlight";
-import { stageOrderCount, type Stage } from "@/lib/miniscript/stages";
+import { compileBsms, compileDescriptorCached, descriptorOrderVariants } from "@/lib/miniscript/compile";
+import { descriptorChecksums, peekScript } from "@/lib/miniscript/highlight";
+import { stageOrderCount } from "@/lib/miniscript/stages";
 import { explainPolicy } from "@/lib/miniscript/explain";
 import { validatePolicy } from "@/lib/miniscript/validate";
-import { blocksWhen, type KeyEntry } from "@/lib/miniscript/keys";
+import { blocksWhen } from "@/lib/miniscript/keys";
 import { numberLocale } from "@/lib/i18n";
 import { useStudio } from "@/store/studio";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,7 @@ import { Check, Copy, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { NodeCheckCard } from "@/components/node-rpc";
+import { ScriptHighlight } from "@/components/script-view";
 
 export function InterpreterPanel() {
   const { t, locale } = useT();
@@ -35,13 +36,11 @@ export function InterpreterPanel() {
   );
   const issues = useMemo(() => validatePolicy(root, locale), [root, locale]);
   const compiled = useMemo(
-    () =>
-      root
-        ? compileDescriptor(root, keys, reuseKeys)
-        : { ok: false as const, miniscript: "", descriptor: "", error: t("read.noPolicy") },
-    [root, keys, reuseKeys, t],
+    () => compileDescriptorCached(root, keys, reuseKeys),
+    [root, keys, reuseKeys],
   );
-  const ms = useMemo(() => (root ? compileMiniscript(root) : ""), [root]);
+  const ms = compiled?.miniscript ?? "";
+  const descriptorText = compiled?.ok ? compiled.descriptor : compiled?.error ?? t("read.noPolicy");
 
   return (
     <ScrollArea className="h-full">
@@ -113,11 +112,8 @@ export function InterpreterPanel() {
         <OrderVariants />
 
         <ScriptPeek title="Miniscript" value={ms} />
-        <ScriptPeek
-          title="Descriptor (wsh)"
-          value={compiled.ok ? compiled.descriptor : compiled.error ?? ""}
-        />
-        <ScriptPeek title="BSMS" value={compiled.ok ? compileBsms(compiled.descriptor) : ""} />
+        <ScriptPeek title="Descriptor (wsh)" value={descriptorText} />
+        <ScriptPeek title="BSMS" value={compiled?.ok ? compileBsms(compiled.descriptor) : ""} />
       </div>
     </ScrollArea>
   );
@@ -128,6 +124,7 @@ function OrderVariants() {
   const stages = useStudio((s) => s.stages);
   const keys = useStudio((s) => s.keys);
   const reuseKeys = useStudio((s) => s.reuseKeys);
+  const nesting = useStudio((s) => s.nesting);
   const setStages = useStudio((s) => s.setStages);
   const updateKey = useStudio((s) => s.updateKey);
   const root = useStudio((s) => s.root);
@@ -135,7 +132,7 @@ function OrderVariants() {
   const [query, setQuery] = useState("");
   const count = useMemo(() => stageOrderCount(stages), [stages]);
   const compiled = useMemo(
-    () => (root ? compileDescriptor(root, keys, reuseKeys) : null),
+    () => compileDescriptorCached(root, keys, reuseKeys),
     [root, keys, reuseKeys],
   );
   const checksums = useMemo(
@@ -144,8 +141,8 @@ function OrderVariants() {
   );
   const variants = useMemo(() => {
     if (!open || !stages.length) return [];
-    return descriptorOrderVariants(stages, keys, reuseKeys, 120);
-  }, [open, stages, keys, reuseKeys]);
+    return descriptorOrderVariants(stages, keys, reuseKeys, 120, nesting);
+  }, [open, stages, keys, reuseKeys, nesting]);
   const needle = query.trim().replace(/^#/, "").toLowerCase();
   const hits = useMemo(() => {
     if (!needle) return variants;
@@ -284,33 +281,8 @@ function ChecksumList({ items }: { items: { path: string; checksum: string }[] }
   );
 }
 
-function ScriptHighlight({
-  value,
-  keys,
-  stages,
-}: {
-  value: string;
-  keys: KeyEntry[];
-  stages: Stage[];
-}) {
-  const spans = useMemo(() => highlightScript(value, keys, stages), [value, keys, stages]);
-  return (
-    <pre className="max-h-[min(28rem,calc(100dvh-14rem))] overflow-auto rounded-lg border border-border bg-ink px-3 py-2 font-mono text-2xs leading-relaxed break-all whitespace-pre-wrap">
-      {spans.map((s, i) => (
-        <Span key={i} span={s} />
-      ))}
-    </pre>
-  );
-}
-
-function Span({ span }: { span: ScriptSpan }) {
-  return <span style={{ color: span.color }}>{span.text}</span>;
-}
-
 function ScriptPeek({ title, value }: { title: string; value: string }) {
   const { t } = useT();
-  const keys = useStudio((s) => s.keys);
-  const stages = useStudio((s) => s.stages);
   const [open, setOpen] = useState(false);
   const [done, setDone] = useState(false);
   if (!value) return null;
@@ -332,7 +304,7 @@ function ScriptPeek({ title, value }: { title: string; value: string }) {
             <DialogTitle>{title}</DialogTitle>
             <DialogDescription>{t("read.openScript")}</DialogDescription>
           </DialogHeader>
-          <ScriptHighlight value={value} keys={keys} stages={stages} />
+          <ScriptHighlight value={value} />
           <div className="mt-2 flex justify-end">
             <Button
               variant="outline"

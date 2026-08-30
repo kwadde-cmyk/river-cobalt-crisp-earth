@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { compileBsms, compileDescriptor } from "@/lib/miniscript/compile";
+import { compileBsms, compileDescriptorCached } from "@/lib/miniscript/compile";
 import {
   compileBip388,
   formatBitboxJson,
@@ -25,6 +25,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { QrPreview, QrScanner, FilePick } from "@/components/qr-io";
 import { HardwareButton } from "@/components/hardware-usb";
 import { NodeButton } from "@/components/node-rpc";
+import { ScriptHighlight } from "@/components/script-view";
 import { useHardware } from "@/store/hardware";
 import { useT } from "@/lib/use-t";
 import { Download, FolderOpen, QrCode, Redo2, RotateCcw, Undo2, Usb } from "lucide-react";
@@ -49,7 +50,7 @@ export function ImportExportBar() {
   const [walletName, setWalletName] = useState("Scriptwerk");
 
   const compiled = useMemo(
-    () => (root ? compileDescriptor(root, keys, reuseKeys) : null),
+    () => compileDescriptorCached(root, keys, reuseKeys),
     [root, keys, reuseKeys],
   );
   const miniscript = compiled?.miniscript ?? "";
@@ -320,9 +321,10 @@ function DeviceExport({
         <p className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">
           {t("export.template")}
         </p>
-        <pre className="max-h-16 overflow-auto rounded-lg border border-border bg-ink px-3 py-2 font-mono text-2xs leading-relaxed break-all whitespace-pre-wrap text-paper">
-          {result.policy.template}
-        </pre>
+        <ScriptHighlight
+          value={result.policy.template}
+          className="max-h-24 overflow-auto rounded-lg border border-border bg-ink px-3 py-2 font-mono text-2xs leading-relaxed break-all whitespace-pre-wrap"
+        />
       </div>
       <div className="flex flex-wrap gap-2">
         <Button
@@ -376,9 +378,10 @@ function CopyText({ value }: { value: string }) {
   if (!value) return null;
   return (
     <div className="space-y-2">
-      <pre className="max-h-28 overflow-auto rounded-lg border border-border bg-ink px-3 py-2 font-mono text-2xs leading-relaxed break-all whitespace-pre-wrap text-paper">
-        {value}
-      </pre>
+      <ScriptHighlight
+        value={value}
+        className="max-h-40 overflow-auto rounded-lg border border-border bg-ink px-3 py-2 font-mono text-2xs leading-relaxed break-all whitespace-pre-wrap"
+      />
       <Button
         variant="outline"
         size="sm"

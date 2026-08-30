@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { compileDescriptor } from "@/lib/miniscript/compile";
+import { compileDescriptorCached } from "@/lib/miniscript/compile";
 import { bookmarkletHref, bridgeScript, openNodeTab, originOf, watchBridge } from "@/lib/bitcoind/bridge";
 import { useBitcoind } from "@/store/bitcoind";
 import type { DiagStatus } from "@/lib/bitcoind/diagnose";
@@ -61,7 +61,7 @@ function useKeepBridge() {
         const st = useBitcoind.getState();
         if (st.status !== "ready") return;
         const s = useStudio.getState();
-        const compiled = s.root ? compileDescriptor(s.root, s.keys, s.reuseKeys) : null;
+        const compiled = compileDescriptorCached(s.root, s.keys, s.reuseKeys);
         if (compiled?.ok && compiled.descriptor.includes("xpub")) {
           await st.validate(compiled.descriptor, s.network);
         }
@@ -97,7 +97,7 @@ function NodeDialogBody() {
   const [proxyOn, setProxyOn] = useState(false);
   const passRef = useRef<HTMLInputElement>(null);
 
-  const compiled = root ? compileDescriptor(root, keys, reuseKeys) : null;
+  const compiled = compileDescriptorCached(root, keys, reuseKeys);
   const ready = status === "ready";
   const errText = error ? localizeMessage(locale, error) : null;
   const port = defaultRpcPort(network);
@@ -307,7 +307,7 @@ export function NodeCheckCard() {
   const root = useStudio((s) => s.root);
   const keys = useStudio((s) => s.keys);
   const reuseKeys = useStudio((s) => s.reuseKeys);
-  const compiled = root ? compileDescriptor(root, keys, reuseKeys) : null;
+  const compiled = compileDescriptorCached(root, keys, reuseKeys);
   const ready = status === "ready";
 
   return (

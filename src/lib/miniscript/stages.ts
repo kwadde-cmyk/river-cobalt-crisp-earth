@@ -1,7 +1,6 @@
-import type { MsNode } from "./ast.ts";
-import { visit } from "./ast.ts";
+import { mapKeyStrings, mapNode, visit, type MsNode } from "./ast.ts";
 import { uid } from "../utils.ts";
-import { baseKeyName, keyRoleLabel } from "./keys.ts";
+import { baseKeyName, keyRoleLabel, reuseBranchPath } from "./keys.ts";
 
 export interface Stage {
   id: string;
@@ -12,9 +11,14 @@ export interface Stage {
   required?: string[];
   /** If true, compile sortedmulti — pubkey order does not change the script. */
   sorted?: boolean;
+  /** If true, use pkh() / thresh(pkh) instead of pk() / multi(). */
+  hash?: boolean;
+  /** If true, k-of-k (e.g. 2-of-2) compiles as and_v instead of multi. */
+  andv?: boolean;
 }
 
-export const DELAY_PRESETS = [0, 1, 144, 1008, 4320, 52596, 60000, 65534] as const;
+export const DELAY_PRESETS = [0, 1, 144, 1008, 4320, 52596, 60000, 65535] as const;
+export const MAX_OLDER = 65535;
 
 export function defaultStages(): Stage[] {
   return [{ id: uid("st"), delay: 0, k: 2, keys: ["A", "B", "C"] }];
@@ -24,8 +28,8 @@ export function nextStageDelay(stages: Stage[]): number {
   const max = Math.max(0, ...stages.map((s) => s.delay));
   if (max <= 0) return 52596;
   if (max < 60000) return 60000;
-  if (max < 65534) return 65534;
-  return Math.min(65534, max);
+  if (max < MAX_OLDER) return MAX_OLDER;
+  return MAX_OLDER;
 }
 
 /** Core accepts sortedmulti only as the entire wsh() script — one unlocked multi stage. */
@@ -35,6 +39,8 @@ export function sortedMultiAllowed(stages: Stage[]): boolean {
   const s = cleaned[0]!;
   if (s.delay > 0) return false;
   if (s.required?.length) return false;
+  if (s.hash) return false;
+  if (s.andv) return false;
   const k = Math.min(Math.max(s.k, 1), s.keys.length);
   return s.keys.length >= 2 && k >= 2;
 }
@@ -50,7 +56,7 @@ function cleanedStages(stages: Stage[]) {
         keys,
         k,
         required: required.length && k < keys.length ? required : undefined,
-        delay: Math.max(0, Math.round(Number(s.delay) || 0)),
+        delay: Math.max(0, Math.min(MAX_OLDER, Math.round(Number(s.delay) || 0))),
       };
     })
     .filter((s) => s.keys.length > 0)
@@ -60,8 +66,8 @@ function cleanedStages(stages: Stage[]) {
 export function reuseAliasHints(
   stages: Stage[],
   reuse: boolean,
-): Map<string, { alias: string; delay: number; account?: number }[]> {
-  const map = new Map<string, { alias: string; delay: number; account?: number }[]>();
+): Map<string, { alias: string; delay: number; account?: number; branch?: string }[]> {
+  const map = new Map<string, { alias: string; delay: number; account?: number; branch?: string }[]>();
   const cleaned = cleanedStages(stages);
   const counts = new Map<string, number>();
   for (const s of cleaned) {
@@ -75,7 +81,7 @@ export function reuseAliasHints(
       seen.set(name, n);
       const list = map.get(name) ?? [];
       if (reuse) {
-        list.push({ alias: `${name}${n}`, delay: s.delay });
+        list.push({ alias: `${name}${n}`, delay: s.delay, branch: reuseBranchPath("<0;1>/*", n) });
       } else if (n > 1) {
         list.push({ alias: `${name}${n - 1}`, delay: s.delay, account: n - 1 });
       }
@@ -151,9 +157,12 @@ export function isDerivedAlias(name: string, masters: Iterable<string>): boolean
   return Boolean(m && set.has(m[1]!));
 }
 
+export type Nesting = "late" | "early";
+
 export function compileStages(
   stages: Stage[],
   reuse = true,
+  nesting: Nesting = "late",
 ): { root: MsNode; aliases: string[] } {
   const cleaned = cleanedStages(stages);
 
@@ -181,8 +190,11 @@ export function compileStages(
     return a;
   }
 
-  function pk(name: string): MsNode {
-    return { id: uid(), kind: "pk", key: name };
+  function pk(name: string, hash = false): MsNode {
+    return { id: uid(), kind: hash ? "pkh" : "pk", key: name };
+  }
+  function wrapA(child: MsNode): MsNode {
+    return { id: uid(), kind: "wrap", wrap: "a", child };
   }
   function wrapV(child: MsNode): MsNode {
     return { id: uid(), kind: "wrap", wrap: "v", child };
@@ -200,37 +212,43 @@ export function compileStages(
     return nodes.reduce((acc, n) => orD(acc, n));
   }
 
+  function combo(k: number, names: string[], hash: boolean, sorted: boolean, andv: boolean): MsNode {
+    if (names.length === 1) return pk(names[0]!, hash);
+    if (hash) {
+      if (k >= names.length) return andAll(names.map((n) => pk(n, true)));
+      if (k === 1) return orAll(names.map((n) => pk(n, true)));
+      return {
+        id: uid(),
+        kind: "thresh",
+        k,
+        children: names.map((n, i) => (i === 0 ? pk(n, true) : wrapA(pk(n, true)))),
+      };
+    }
+    if (andv && k >= names.length) return andAll(names.map((n) => pk(n, false)));
+    return { id: uid(), kind: "multi", k, keys: names, sorted };
+  }
+
   function body(s: (typeof cleaned)[number]): MsNode {
     const mapped = new Map<string, string>();
     const names = s.keys.map((k) => {
       if (!mapped.has(k)) mapped.set(k, aliasName(k));
       return mapped.get(k)!;
     });
+    const hash = Boolean(s.hash);
     const reqNames = (s.required ?? [])
       .map((k) => mapped.get(k))
       .filter((n): n is string => Boolean(n));
     const rest = names.filter((n) => !reqNames.includes(n));
     if (reqNames.length && rest.length) {
-      const must = reqNames.length === 1 ? pk(reqNames[0]!) : andAll(reqNames.map(pk));
+      const must = reqNames.length === 1 ? pk(reqNames[0]!, hash) : andAll(reqNames.map((n) => pk(n, hash)));
       const restK = Math.max(1, Math.min((s.k || 1) - reqNames.length, rest.length));
-      const choice =
-        restK >= rest.length
-          ? rest.length === 1
-            ? pk(rest[0]!)
-            : { id: uid(), kind: "multi" as const, k: rest.length, keys: rest }
-          : restK === 1
-            ? rest.length === 1
-              ? pk(rest[0]!)
-              : orAll(rest.map(pk))
-            : { id: uid(), kind: "multi" as const, k: restK, keys: rest };
-      return andV(must, choice);
+      return andV(must, combo(restK, rest, hash, false, false));
     }
     if (reqNames.length && !rest.length) {
-      return reqNames.length === 1 ? pk(reqNames[0]!) : andAll(reqNames.map(pk));
+      return reqNames.length === 1 ? pk(reqNames[0]!, hash) : andAll(reqNames.map((n) => pk(n, hash)));
     }
     const k = Math.min(Math.max(s.k, 1), names.length);
-    if (names.length === 1 && k === 1) return pk(names[0]!);
-    return { id: uid(), kind: "multi", k, keys: names, sorted: Boolean(s.sorted) && sortedMultiAllowed(cleaned) };
+    return combo(k, names, hash, Boolean(s.sorted) && sortedMultiAllowed(cleaned), Boolean(s.andv));
   }
 
   function locked(s: (typeof cleaned)[number]): MsNode {
@@ -240,15 +258,61 @@ export function compileStages(
       id: uid(),
       kind: "and_v",
       left: { id: uid(), kind: "wrap", wrap: "v", child: b },
-      right: { id: uid(), kind: "older", n: Math.min(s.delay, 65535) },
+      right: { id: uid(), kind: "older", n: Math.min(s.delay, MAX_OLDER) },
     };
   }
 
-  let acc = locked(cleaned[0]!);
-  for (let i = 1; i < cleaned.length; i++) {
-    acc = { id: uid(), kind: "or_i", left: locked(cleaned[i]!), right: acc };
+  const bodies = cleaned.map((s) => locked(s));
+  if (bodies.length === 1) return { root: bodies[0]!, aliases };
+  let acc: MsNode;
+  if (nesting === "early") {
+    acc = bodies[bodies.length - 1]!;
+    for (let i = bodies.length - 2; i >= 0; i--) {
+      acc = { id: uid(), kind: "or_i", left: bodies[i]!, right: acc };
+    }
+  } else {
+    acc = bodies[0]!;
+    for (let i = 1; i < bodies.length; i++) {
+      acc = { id: uid(), kind: "or_i", left: bodies[i]!, right: acc };
+    }
   }
   return { root: acc, aliases };
+}
+
+/** Number each key use in delay order (A1, A2, …) so reuse tails match the key list. */
+export function aliasReuseKeys(root: MsNode): MsNode {
+  const parts = splitDisjuncts(root);
+  if (parts.length < 2) return root;
+  const delays = parts.map((n) => peelLock(n).delay);
+  const order = parts.map((_, i) => i).sort((a, b) => delays[a]! - delays[b]! || a - b);
+  const seen = new Map<string, number>();
+  let next = root;
+  for (const i of order) {
+    const leaf = parts[i]!;
+    const local = new Map<string, string>();
+    const stamped = mapKeyStrings(leaf, (key) => {
+      const base = baseKeyName(key);
+      const prev = local.get(base);
+      if (prev) return prev;
+      const n = (seen.get(base) ?? 0) + 1;
+      seen.set(base, n);
+      const alias = `${base}${n}`;
+      local.set(base, alias);
+      return alias;
+    });
+    next = mapNode(next, leaf.id, () => stamped);
+  }
+  return next;
+}
+
+export function inferNesting(root: MsNode): Nesting {
+  const n = unwrap(root);
+  if (n.kind !== "or_i" && n.kind !== "or_d" && n.kind !== "or_c" && n.kind !== "or_b") return "late";
+  const side = (node: MsNode) => {
+    const delays = splitDisjuncts(node).map((p) => peelLock(p).delay);
+    return delays.length ? Math.min(...delays) : 0;
+  };
+  return side(n.left) < side(n.right) ? "early" : "late";
 }
 
 function unwrap(n: MsNode): MsNode {
@@ -362,22 +426,36 @@ function flattenShape(shape: KeyShape): { keys: string[]; k: number; required?: 
 export function stageFormula(stage: Stage): string {
   const req = (stage.required ?? []).filter((k) => stage.keys.includes(k));
   const rest = stage.keys.filter((k) => !req.includes(k));
+  const kind = stage.hash ? " pkh" : "";
   if (req.length && rest.length) {
     const must = req.join(" + ");
     const choice = rest.length === 1 ? rest[0]! : `(${rest.join(" | ")})`;
-    return `${must} + ${choice}`;
+    return `${must} + ${choice}${kind}`;
   }
-  if (req.length && !rest.length) return req.join(" + ");
-  if (stage.k >= stage.keys.length) return stage.keys.join(" + ");
-  return `${stage.k}/${stage.keys.length} ${stage.keys.join(" · ")}`;
+  if (req.length && !rest.length) return `${req.join(" + ")}${kind}`;
+  if (stage.k >= stage.keys.length) return `${stage.keys.join(" + ")}${kind}`;
+  return `${stage.k}/${stage.keys.length} ${stage.keys.join(" · ")}${kind}`;
 }
 
-function stageSig(delay: number, keys: string[], k: number, required?: string[]): string {
+function branchHasPkh(n: MsNode): boolean {
+  let hit = false;
+  visit(n, (x) => {
+    if (x.kind === "pkh") hit = true;
+  });
+  return hit;
+}
+
+function branchIsAndV(n: MsNode): boolean {
+  const u = unwrap(n);
+  return u.kind === "and_v" || u.kind === "and_b";
+}
+
+function stageSig(delay: number, keys: string[], k: number, required?: string[], hash?: boolean, andv?: boolean): string {
   const sorted = [...keys].sort();
   const req = (required ?? []).filter((x) => keys.includes(x)).sort();
   const reqPart =
     req.length > 0 ? req.join(",") : k >= sorted.length || sorted.length <= 1 ? sorted.join(",") : "";
-  return `${delay}|${k}|${sorted.join(",")}|${reqPart}`;
+  return `${delay}|${k}|${sorted.join(",")}|${reqPart}|${hash ? "h" : "p"}|${andv ? "a" : "m"}`;
 }
 
 /** Recover the left-hand stage GUI from an imported miniscript / wallet policy. */
@@ -392,16 +470,18 @@ export function inferStages(root: MsNode | null): Stage[] {
     if (!flat.keys.length) continue;
     stages.push({
       id: uid("st"),
-      delay: Math.max(0, Math.min(65534, delay)),
+      delay: Math.max(0, Math.min(MAX_OLDER, delay)),
       k: Math.max(1, flat.k),
       keys: flat.keys,
       required: flat.required,
+      hash: branchHasPkh(body),
+      andv: !branchHasPkh(body) && branchIsAndV(body),
     });
   }
   if (!stages.length) return [];
   const merged = new Map<string, Stage>();
   for (const s of stages) {
-    const sig = stageSig(s.delay, s.keys, s.k, s.required);
+    const sig = stageSig(s.delay, s.keys, s.k, s.required, s.hash, s.andv);
     if (!merged.has(sig)) merged.set(sig, s);
   }
   return [...merged.values()].sort((a, b) => a.delay - b.delay);
@@ -416,13 +496,13 @@ export function stageHighlightIds(
   if (!root || !stageId) return ids;
   const target = stages.find((s) => s.id === stageId);
   if (!target) return ids;
-  const want = stageSig(target.delay, target.keys, target.k, target.required);
+  const want = stageSig(target.delay, target.keys, target.k, target.required, target.hash, target.andv);
   for (const branch of splitDisjuncts(root)) {
     const { delay, body } = peelLock(branch);
     const shape = shapeOf(body);
     if (!shape) continue;
     const flat = flattenShape(shape);
-    if (stageSig(delay, flat.keys, flat.k, flat.required) !== want) continue;
+    if (stageSig(delay, flat.keys, flat.k, flat.required, branchHasPkh(body), !branchHasPkh(body) && branchIsAndV(body)) !== want) continue;
     visit(branch, (n) => ids.add(n.id));
     break;
   }

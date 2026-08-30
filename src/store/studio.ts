@@ -19,7 +19,7 @@ import {
 } from "@/lib/miniscript/keys";
 import { buildOperator, wrapNode, type BuildParams } from "@/lib/miniscript/operators";
 import { parseAny } from "@/lib/miniscript/parser";
-import { compileStages, defaultStages, inferStages, isDerivedAlias, type Stage } from "@/lib/miniscript/stages";
+import { compileStages, defaultStages, inferNesting, inferStages, isDerivedAlias, type Nesting, type Stage } from "@/lib/miniscript/stages";
 import { materializeWalletPolicy, parseScriptwerkBundle, parseWalletPolicy } from "@/lib/miniscript/bip388";
 import { isLocale, localizeMessage, t, type Locale } from "@/lib/i18n";
 
@@ -31,10 +31,11 @@ type Snapshot = {
   selectedStageId: string | null;
   network: "mainnet" | "testnet";
   reuseKeys: boolean;
+  nesting: Nesting;
 };
 
 function snapOf(s: Snapshot): Snapshot {
-  return structuredClone({
+  return {
     keys: s.keys,
     root: s.root,
     stages: s.stages,
@@ -42,10 +43,11 @@ function snapOf(s: Snapshot): Snapshot {
     selectedStageId: s.selectedStageId,
     network: s.network,
     reuseKeys: s.reuseKeys,
-  });
+    nesting: s.nesting,
+  };
 }
 
-const HISTORY = 60;
+const HISTORY = 40;
 
 interface StudioState {
   keys: KeyEntry[];
@@ -55,12 +57,14 @@ interface StudioState {
   selectedStageId: string | null;
   network: "mainnet" | "testnet";
   reuseKeys: boolean;
+  nesting: Nesting;
   locale: Locale;
   importError: string | null;
   past: Snapshot[];
   future: Snapshot[];
   setNetwork: (n: "mainnet" | "testnet") => void;
   setReuseKeys: (v: boolean) => void;
+  setNesting: (v: Nesting) => void;
   setLocale: (locale: Locale) => void;
   select: (id: string | null) => void;
   selectStage: (id: string | null) => void;
@@ -95,9 +99,11 @@ function adoptImportedTree(node: MsNode, keys: KeyEntry[], opts?: { preserveGrou
   const masters = stages.flatMap((s) => s.keys);
   const folded = masters.length ? collapseAliasKeys(grouped.keys, masters) : grouped.keys;
   const labeled = relabelKeysFromA(folded, stages, renamed);
+  const tree = labeled.root ?? renamed;
   return {
-    root: labeled.root ?? renamed,
-    selectedId: (labeled.root ?? renamed).id,
+    root: tree,
+    nesting: inferNesting(tree),
+    selectedId: tree.id,
     keys: labeled.keys,
     stages: labeled.stages,
     importError: null as string | null,
@@ -190,13 +196,15 @@ function applyStageTree(
   current: KeyEntry[],
   network: "mainnet" | "testnet",
   reuseKeys: boolean,
+  nesting: Nesting = "late",
 ) {
-  const { root } = compileStages(stages, reuseKeys);
+  const { root } = compileStages(stages, reuseKeys, nesting);
   return {
     stages,
     root,
     keys: keysForStages(stages, current, network),
     selectedId: root.id,
+    nesting,
     importError: null,
   };
 }
@@ -253,6 +261,7 @@ export const useStudio = create<StudioState>()(
       selectedStageId: null,
       network: "mainnet",
       reuseKeys: false,
+      nesting: "late",
       locale: "de",
       importError: null,
       past: [],
@@ -270,12 +279,20 @@ export const useStudio = create<StudioState>()(
         });
       },
       setReuseKeys: (reuseKeys) => {
-        const { stages, keys, network } = get();
+        const { stages, keys, network, nesting } = get();
         if (stages.length) {
-          mutate({ reuseKeys, ...applyStageTree(stages, keys, network, reuseKeys) });
+          mutate({ reuseKeys, ...applyStageTree(stages, keys, network, reuseKeys, nesting) });
           return;
         }
         mutate({ reuseKeys });
+      },
+      setNesting: (nesting) => {
+        const { stages, keys, network, reuseKeys } = get();
+        if (stages.length) {
+          mutate(applyStageTree(stages, keys, network, reuseKeys, nesting));
+          return;
+        }
+        mutate({ nesting });
       },
       setLocale: (locale) => set({ locale: isLocale(locale) ? locale : "de" }),
       select: (selectedId) => set({ selectedId, selectedStageId: null }),
@@ -309,7 +326,7 @@ export const useStudio = create<StudioState>()(
       setRoot: (root) => mutate({ root, selectedId: root?.id ?? null }),
       setStages: (stages) => {
         const cur = get();
-        const next = applyStageTree(stages, cur.keys, cur.network, cur.reuseKeys);
+        const next = applyStageTree(stages, cur.keys, cur.network, cur.reuseKeys, cur.nesting);
         mutate({
           ...next,
           selectedId: cur.selectedStageId ? null : (next.root?.id ?? null),
@@ -383,7 +400,7 @@ export const useStudio = create<StudioState>()(
         mutate({ keys: get().keys.map((k) => (k.id === id ? { ...k, ...patch } : k)) });
       },
       removeKey: (id) => {
-        const { keys, stages, reuseKeys } = get();
+        const { keys, stages, reuseKeys, nesting } = get();
         const removed = keys.find((k) => k.id === id);
         const nextKeys = keys.filter((k) => k.id !== id);
         if (!removed || !stages.length) {
@@ -402,6 +419,7 @@ export const useStudio = create<StudioState>()(
             nextKeys,
             get().network,
             reuseKeys,
+            nesting,
           ),
         );
       },
@@ -516,7 +534,7 @@ export const useStudio = create<StudioState>()(
         });
         return null;
       },
-      reset: () => mutate(applyStageTree(defaultStages(), [], get().network, get().reuseKeys)),
+      reset: () => mutate(applyStageTree(defaultStages(), [], get().network, get().reuseKeys, get().nesting)),
     };
     },
     {
@@ -535,6 +553,7 @@ export const useStudio = create<StudioState>()(
         stages: s.stages,
         network: s.network,
         reuseKeys: s.reuseKeys,
+        nesting: s.nesting,
         locale: s.locale,
       }),
       skipHydration: true,

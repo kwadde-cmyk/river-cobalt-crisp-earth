@@ -1,9 +1,9 @@
 import type { KeyEntry } from "./keys.ts";
-import { accountPathFrom, childForAccount } from "./keys.ts";
+import { accountPathFrom, childForAccount, reuseBranchPath } from "./keys.ts";
 import type { MsNode } from "./ast.ts";
 import { collectKeys, hasHoles } from "./ast.ts";
 import { descsumCreate, CHILD_PATH_FORMS, rewriteDescriptorChildPath } from "./checksum.ts";
-import { compileStages, stageKeyOrderVariants, type Stage } from "./stages.ts";
+import { compileStages, aliasReuseKeys, stageKeyOrderVariants, type Nesting, type Stage } from "./stages.ts";
 
 export function compileMiniscript(node: MsNode, compact = true): string {
   const raw = compileNode(node);
@@ -51,10 +51,12 @@ export function expandAliasKeys(node: MsNode, keys: KeyEntry[], reuse = true): K
     const src = m ? byName.get(m[1]!) : undefined;
     if (!src) continue;
     const idx = m ? Number(m[2]) : 0;
-    const child = Number.isFinite(idx) ? childForAccount(src, idx) : undefined;
-    const expected = accountPathFrom(src.derivation, idx);
+    const occ = Number.isFinite(idx) && idx > 0 ? idx : 1;
+    const account = reuse ? (occ > 1 ? occ - 1 : 0) : idx;
+    const child = account > 0 ? childForAccount(src, account) : undefined;
+    const expected = accountPathFrom(src.derivation, account > 0 ? account : 0);
     let clone: KeyEntry;
-    if (!reuse && child?.xpub) {
+    if (child?.xpub) {
       clone = {
         ...src,
         id: `${src.id}_${n}`,
@@ -74,7 +76,15 @@ export function expandAliasKeys(node: MsNode, keys: KeyEntry[], reuse = true): K
         children: [],
       };
     } else {
-      clone = { ...src, id: `${src.id}_${n}`, name: n };
+      const childPath = reuseBranchPath(src.childPath, occ);
+      clone = {
+        ...src,
+        id: `${src.id}_${n}`,
+        name: n,
+        childPath,
+        multipath: childPath.match(/^<[^>]+>/)?.[0] || src.multipath,
+        children: [],
+      };
     }
     out.push(clone);
     byName.set(n, clone);
@@ -83,36 +93,33 @@ export function expandAliasKeys(node: MsNode, keys: KeyEntry[], reuse = true): K
 }
 
 export function substituteKeys(ms: string, keys: KeyEntry[]): string {
-  let out = ms;
-  const sorted = [...keys].sort((a, b) => b.name.length - a.name.length);
-  for (const k of sorted) {
-    if (!k.xpub.trim()) continue;
-    out = replaceKeyToken(out, k.name, formatKeyExpr(k));
-  }
-  return out;
-}
-
-function replaceKeyToken(src: string, name: string, expr: string): string {
-  const re = new RegExp(`(?<![A-Za-z0-9_])${escapeRe(name)}(?![A-Za-z0-9_])`, "g");
-  return src.replace(re, expr);
+  const lookup = [...keys].sort((a, b) => b.name.length - a.name.length);
+  const names = lookup.map((k) => k.name).filter(Boolean);
+  if (!names.length) return ms;
+  const re = new RegExp(`(?<![A-Za-z0-9_])(${names.map(escapeRe).join("|")})(?![A-Za-z0-9_])`, "g");
+  return ms.replace(re, (tok) => {
+    const k = lookup.find((e) => e.name === tok);
+    if (!k?.xpub.trim()) return tok;
+    return formatKeyExpr(k);
+  });
 }
 
 function escapeRe(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-const RANGE_TAIL = /\/(?:<[^>]+>|\d+)\/\*$/;
+function stripRangeTail(s: string): string {
+  return s.replace(/\/(?:<[^>]+>|\d+)\/\*$/, "");
+}
 
 export function formatKeyExpr(k: KeyEntry): string {
-  const xpub = k.xpub.trim();
-  if (!xpub) return k.name;
+  const raw = stripRangeTail(k.xpub.trim());
+  if (!raw) return k.name;
   const tail = (k.childPath || `${k.multipath || "<0;1>"}/*`).replace(/^\//, "");
-  if (xpub.includes("[") || xpub.includes("/")) {
-    return RANGE_TAIL.test(xpub) ? xpub.replace(RANGE_TAIL, `/${tail}`) : `${xpub}/${tail}`;
-  }
+  if (raw.startsWith("[")) return `${raw}/${tail}`;
   const path = (k.derivation || "48'/0'/0'/2'").replace(/^m\//, "");
   const fp = (k.fingerprint || "00000000").replace(/^#/, "").slice(0, 8);
-  return `[${fp}/${path}]${xpub}/${tail}`;
+  return `[${fp}/${path}]${raw}/${tail}`;
 }
 
 export function compileDescriptor(
@@ -128,10 +135,35 @@ export function compileDescriptor(
       error: "Es fehlen noch Bausteine (leere Slots).",
     };
   }
-  const miniscript = compileMiniscript(node);
-  const inner = rewriteSortedMultiForCore(substituteKeys(miniscript, expandAliasKeys(node, keys, reuse)), node);
+  const tree = reuse ? aliasReuseKeys(node) : node;
+  const miniscript = compileMiniscript(tree);
+  const inner = rewriteSortedMultiForCore(substituteKeys(miniscript, expandAliasKeys(tree, keys, reuse)), node);
   const descriptor = descsumCreate(`wsh(${inner})`);
   return { ok: true, miniscript, descriptor };
+}
+
+let cachedNode: MsNode | null = null;
+let cachedKeys: KeyEntry[] | undefined;
+let cachedReuse: boolean | undefined;
+let cachedOut: ReturnType<typeof compileDescriptor> | null = null;
+
+/** Same root/keys refs (Zustand) skip a second compile in Interpreter / Export / Node. */
+export function compileDescriptorCached(
+  node: MsNode | null,
+  keys: KeyEntry[],
+  reuse = true,
+): ReturnType<typeof compileDescriptor> | null {
+  if (!node) {
+    cachedNode = null;
+    cachedOut = null;
+    return null;
+  }
+  if (node === cachedNode && keys === cachedKeys && reuse === cachedReuse) return cachedOut;
+  cachedNode = node;
+  cachedKeys = keys;
+  cachedReuse = reuse;
+  cachedOut = compileDescriptor(node, keys, reuse);
+  return cachedOut;
 }
 
 /**
@@ -161,12 +193,13 @@ export function descriptorOrderVariants(
   keys: KeyEntry[],
   reuse = true,
   limit = 120,
+  nesting: Nesting = "late",
 ): { stages: Stage[]; descriptor: string; checksum: string; orders: string[]; childPath: string }[] {
   const variants = stageKeyOrderVariants(stages, limit);
   const seen = new Set<string>();
   const out: { stages: Stage[]; descriptor: string; checksum: string; orders: string[]; childPath: string }[] = [];
   for (const next of variants) {
-    const { root } = compileStages(next, reuse);
+    const { root } = compileStages(next, reuse, nesting);
     const compiled = compileDescriptor(root, keys, reuse);
     if (!compiled.ok) continue;
     for (const tail of CHILD_PATH_FORMS) {

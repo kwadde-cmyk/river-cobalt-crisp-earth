@@ -204,7 +204,7 @@ function ParamDialog({
           ) : null}
           {op.params.some((p) => p.kind === "blocks") ? (
             <Field label={op.id === "older" ? t("ops.blocksCsv") : t("ops.heightCltv")}>
-              <Input type="number" min={1} value={n} onChange={(e) => setN(Number(e.target.value))} />
+              <Input type="number" min={1} max={65535} value={n} onChange={(e) => setN(Number(e.target.value))} />
               {op.id === "older" ? (
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {DELAY_PRESETS.filter((v) => v > 0).map((v) => (

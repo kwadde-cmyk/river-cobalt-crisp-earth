@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { checksumOf, coreCanonicalBody, descsumCheck, descsumCreate, stripChecksum } from "./checksum.ts";
+import { checksumOf, coreCanonicalBody, descsumCheck, descsumCreate, rewriteDescriptorChildPath, stripChecksum } from "./checksum.ts";
 import { descriptorChecksums, highlightScript, peekScript } from "./highlight.ts";
 import {
   compileDescriptor,
@@ -22,6 +22,7 @@ import {
   keyHeadline,
   keyNeedsAction,
   keyRoleLabel,
+  reuseBranchPath,
   childRoleLabel,
   keyTileLabel,
   sanitizeKeyNote,
@@ -38,7 +39,7 @@ import {
   sortKeyEntries,
 } from "./keys.ts";
 import { parseAny } from "./parser.ts";
-import { compileStages, describeStageSlots, inferStages, permutations, slotsForAccount, sortedMultiAllowed, stageFormula, stageHighlightIds, stageIndicesForAccount, stageKeyOrderVariants } from "./stages.ts";
+import { compileStages, describeStageSlots, inferNesting, inferStages, permutations, slotsForAccount, sortedMultiAllowed, stageFormula, stageHighlightIds, stageIndicesForAccount, stageKeyOrderVariants } from "./stages.ts";
 import {
   compileBip388,
   formatBitboxJson,
@@ -100,6 +101,21 @@ describe("checksum", () => {
     assert.equal(recv.includes("/0/"), true);
     assert.notEqual(checksumOf(body), checksumOf(recv));
     assert.equal(stripChecksum(descsumCreate(body)), body);
+  });
+
+  it("counts reuse branches and keeps offsets when switching 0/*", () => {
+    assert.equal(reuseBranchPath("<0;1>/*", 1), "<0;1>/*");
+    assert.equal(reuseBranchPath("<0;1>/*", 2), "<2;3>/*");
+    assert.equal(reuseBranchPath("<0;1>/*", 3), "<4;5>/*");
+    assert.equal(reuseBranchPath("0/*", 2), "2/*");
+    const d = descsumCreate("wsh(or_i(pk(xpubA/<2;3>/*),pk(xpubA/<0;1>/*)))");
+    const recv = rewriteDescriptorChildPath(d, "0/*");
+    assert.match(recv, /\/2\/\*/);
+    assert.match(recv, /\/0\/\*/);
+    assert.equal(recv.includes("/<"), false);
+    const back = rewriteDescriptorChildPath(recv, "<0;1>/*");
+    assert.match(back, /\/<2;3>\/\*/);
+    assert.match(back, /\/<0;1>\/\*/);
   });
 });
 
@@ -366,6 +382,28 @@ describe("stages", () => {
     assert.equal(compileMiniscript(root), "multi(2,A,B,C)");
   });
 
+  it("compiles pkh as thresh with a: wrappers", () => {
+    const { root } = compileStages([{ id: "s1", delay: 0, k: 2, keys: ["A", "B", "C"], hash: true }]);
+    assert.equal(compileMiniscript(root), "thresh(2,pkh(A),a:pkh(B),a:pkh(C))");
+    const recovered = inferStages(root);
+    assert.equal(recovered[0]?.hash, true);
+    assert.deepEqual(recovered[0]?.keys, ["A", "B", "C"]);
+    assert.equal(recovered[0]?.k, 2);
+  });
+
+  it("compiles a single hashed key as pkh", () => {
+    const { root } = compileStages([{ id: "s1", delay: 144, k: 1, keys: ["A"], hash: true }]);
+    assert.equal(compileMiniscript(root), "and_v(v:pkh(A),older(144))");
+  });
+
+  it("compiles 2-of-2 as and_v when requested", () => {
+    const multi = compileStages([{ id: "s1", delay: 0, k: 2, keys: ["A", "B"] }]).root;
+    assert.equal(compileMiniscript(multi), "multi(2,A,B)");
+    const { root } = compileStages([{ id: "s1", delay: 0, k: 2, keys: ["A", "B"], andv: true }]);
+    assert.equal(compileMiniscript(root), "and_v(v:pk(A),pk(B))");
+    assert.equal(inferStages(root)[0]?.andv, true);
+  });
+
   it("nests later timelocks outside, aliases reused keys", () => {
     const { root } = compileStages([
       { id: "s1", delay: 0, k: 2, keys: ["A", "B", "C"] },
@@ -393,6 +431,23 @@ describe("stages", () => {
     assert.deepEqual(recovered[1]?.keys, ["A", "D"]);
     assert.equal(recovered[2]?.delay, 65534);
     assert.deepEqual(recovered[2]?.keys, ["B", "C", "D"]);
+    assert.equal(inferNesting(root), "late");
+    const early = compileStages(
+      [
+        { id: "s1", delay: 0, k: 2, keys: ["A", "B", "C"] },
+        { id: "s2", delay: 60000, k: 2, keys: ["A", "D"] },
+        { id: "s3", delay: 65534, k: 2, keys: ["B", "C", "D"] },
+      ],
+      true,
+      "early",
+    ).root;
+    const earlyMs = compileMiniscript(early);
+    assert.equal(
+      earlyMs,
+      "or_i(multi(2,A1,B1,C1),or_i(and_v(v:multi(2,A2,D1),older(60000)),and_v(v:multi(2,B2,C2,D2),older(65534))))",
+    );
+    assert.equal(inferNesting(early), "early");
+    assert.notEqual(ms, earlyMs);
   });
 
   it("compiles a complete policy to a checksummed descriptor with alias xpubs", () => {
@@ -410,6 +465,94 @@ describe("stages", () => {
     assert.equal(descsumCheck(compiled.descriptor), true);
     assert.match(compiled.descriptor, /deadbeef/);
     assert.equal(compiled.descriptor.includes("A1") || compiled.descriptor.includes(XPUB), true);
+    assert.match(compiled.descriptor, /\/<0;1>\/\*/);
+    assert.match(compiled.descriptor, /\/<2;3>\/\*/);
+  });
+
+  it("strips an existing range tail before counting reuse branches", () => {
+    const { root } = compileStages([
+      { id: "s1", delay: 0, k: 1, keys: ["A"] },
+      { id: "s2", delay: 144, k: 1, keys: ["A"] },
+    ]);
+    const compiled = compileDescriptor(root, [
+      { ...emptyKey("A"), xpub: `${XPUB}/<0;1>/*`, fingerprint: "deadbeef" },
+    ]);
+    assert.equal(compiled.ok, true);
+    assert.match(compiled.descriptor, /\/<0;1>\/\*/);
+    assert.match(compiled.descriptor, /\/<2;3>\/\*/);
+    assert.equal((compiled.descriptor.match(/\/<0;1>\/\*/g) ?? []).length, 1);
+  });
+
+  it("counts reuse tails from 0 even if the stored childPath is already shifted", () => {
+    const { root } = compileStages(
+      [
+        { id: "s1", delay: 0, k: 1, keys: ["A"] },
+        { id: "s2", delay: 1, k: 1, keys: ["A"] },
+        { id: "s3", delay: 144, k: 1, keys: ["A"] },
+        { id: "s4", delay: 65535, k: 1, keys: ["A"] },
+      ],
+      true,
+    );
+    const compiled = compileDescriptor(root, [
+      { ...emptyKey("A"), xpub: XPUB, fingerprint: "d060eff8", derivation: "84'/0'/0'", childPath: "<6;7>/*", multipath: "<6;7>" },
+    ]);
+    assert.equal(compiled.ok, true);
+    assert.match(compiled.descriptor, /\/<0;1>\/\*/);
+    assert.match(compiled.descriptor, /\/<2;3>\/\*/);
+    assert.match(compiled.descriptor, /\/<4;5>\/\*/);
+    assert.match(compiled.descriptor, /\/<6;7>\/\*/);
+    assert.equal((compiled.descriptor.match(/\/<6;7>\/\*/g) ?? []).length, 1);
+  });
+
+  it("stamps unaliased duplicate keys in delay order", () => {
+    const root = {
+      id: "r",
+      kind: "or_i" as const,
+      left: {
+        id: "late",
+        kind: "and_v" as const,
+        left: { id: "vw", kind: "wrap" as const, wrap: "v" as const, child: { id: "pk2", kind: "pk" as const, key: "A" } },
+        right: { id: "old", kind: "older" as const, n: 144 },
+      },
+      right: { id: "pk1", kind: "pk" as const, key: "A" },
+    };
+    const compiled = compileDescriptor(root, [
+      { ...emptyKey("A"), xpub: XPUB, fingerprint: "d060eff8", derivation: "84'/0'/0'", childPath: "<2;3>/*" },
+    ]);
+    assert.equal(compiled.ok, true);
+    assert.match(compiled.descriptor, /\/<0;1>\/\*/);
+    assert.match(compiled.descriptor, /\/<2;3>\/\*/);
+    assert.equal((compiled.descriptor.match(/\/<0;1>\/\*/g) ?? []).length, 1);
+    assert.equal((compiled.descriptor.match(/\/<2;3>\/\*/g) ?? []).length, 1);
+  });
+
+  it("uses child account origin from keys instead of a counted tail", () => {
+    const childXpub = XPUB.replace("Bosf", "Bosg");
+    const { root } = compileStages(
+      [
+        { id: "s1", delay: 0, k: 1, keys: ["A"] },
+        { id: "s2", delay: 144, k: 1, keys: ["A"] },
+      ],
+      true,
+    );
+    const compiled = compileDescriptor(
+      root,
+      [
+        {
+          ...emptyKey("A"),
+          xpub: XPUB,
+          fingerprint: "deadbeef",
+          derivation: "48'/0'/0'/2'",
+          children: [{ id: "c1", path: "48'/0'/1'/2'", xpub: childXpub, fingerprint: "deadbeef", note: "" }],
+        },
+      ],
+      true,
+    );
+    assert.equal(compiled.ok, true);
+    assert.match(compiled.descriptor, /48'\/0'\/0'\/2'/);
+    assert.match(compiled.descriptor, /48'\/0'\/1'\/2'/);
+    assert.match(compiled.descriptor, new RegExp(childXpub));
+    assert.equal(compiled.descriptor.includes("/<2;3>/"), false);
   });
 
   it("changes the checksum when multi keys are reordered, not when sorted", () => {
@@ -515,6 +658,8 @@ describe("stages", () => {
     assert.equal(stages[2]?.delay, 65534);
     assert.deepEqual(stages[2]?.keys, ["F", "G", "H"]);
     assert.equal(stages[2]?.k, 2);
+    const maxed = inferStages(parseAny("and_v(v:pk(A),older(65535))").node);
+    assert.equal(maxed[0]?.delay, 65535);
     const hit = stageHighlightIds(node, stages, stages[0]!.id);
     assert.ok(hit.size >= 3);
     const miss = stageHighlightIds(node, stages, stages[2]!.id);
@@ -586,7 +731,7 @@ describe("bip388", () => {
     ]);
     const out = compileBip388(root, [keyA, keyB]);
     assert.equal(out.ok, true);
-    assert.equal(out.policy.template, "wsh(or_i(and_v(v:pk(@0/**),older(144)),multi(2,@0/**,@1/**)))");
+    assert.equal(out.policy.template, "wsh(or_i(and_v(v:pk(@0/<2;3>/**),older(144)),multi(2,@0/**,@1/**)))");
     assert.equal(out.policy.keys.length, 2);
   });
 
@@ -612,7 +757,7 @@ describe("bip388", () => {
     const compiled = compileBip388(root, [keyA, keyB]);
     const ledger = toLedgerPolicy(compiled.policy);
     assert.equal(ledger.template.includes("sortedmulti"), false);
-    assert.match(ledger.template, /wsh\(or_i\(and_v\(v:pk\(@0\/\*\*\),older\(144\)\),multi\(2,@0\/\*\*,@1\/\*\*\)\)\)/);
+    assert.match(ledger.template, /wsh\(or_i\(and_v\(v:pk\(@0\/<2;3>\/\*\*\),older\(144\)\),multi\(2,@0\/\*\*,@1\/\*\*\)\)\)/);
     assert.match(ledger.keys[0]!.origin, /^\[deadbeef\/48'\/0'\/0'\/2'\]xpub/);
   });
 

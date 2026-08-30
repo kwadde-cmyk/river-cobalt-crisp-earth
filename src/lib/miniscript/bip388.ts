@@ -39,7 +39,7 @@ export interface Bip388CompileResult {
   warnings: string[];
 }
 
-const PLACEHOLDER_RE = /@(\d+)(?:\/\*\*|\/<[^>]+>\/\*|\/\*)?/g;
+const PLACEHOLDER_RE = /@(\d+)(?:\/\*\*|\/<[^>]+>\/\*\*?|\/\d+\/\*\*?|\/\*)?/g;
 const XPUB_RE = /(?:xpub|tpub|ypub|zpub|vpub|Ypub|Zpub|Vpub)[1-9A-HJ-NP-Za-km-z]+/;
 
 export function formatKeyOrigin(k: KeyEntry): string {
@@ -59,6 +59,34 @@ export function formatKeyOrigin(k: KeyEntry): string {
   if (fp && path) return `[${fp}/${path}]${xpub}`;
   if (fp) return `[${fp}]${xpub}`;
   return xpub;
+}
+
+function xpubId(k: KeyEntry | undefined): string {
+  return k?.xpub.match(XPUB_RE)?.[0] ?? k?.xpub.trim() ?? "";
+}
+
+function distinctChildPath(
+  entry: KeyEntry | undefined,
+  parent: KeyEntry | undefined,
+  token: string,
+  reuse: boolean,
+): string {
+  if (
+    entry &&
+    parent &&
+    token !== parent.name &&
+    (xpubId(entry) !== xpubId(parent) || (entry.derivation || "") !== (parent.derivation || ""))
+  ) {
+    return "/**";
+  }
+  return bip388KeyTail(entry, token, reuse);
+}
+
+function bip388KeyTail(k: KeyEntry | undefined, _token: string, reuse: boolean): string {
+  const tail = (k?.childPath || "<0;1>/*").replace(/^\//, "");
+  if (!reuse || !tail || tail === "<0;1>/*" || tail === "*" || tail === "**") return "/**";
+  const body = tail.replace(/\/\*$/, "").replace(/\*$/, "");
+  return `/${body}/**`;
 }
 
 function baseName(token: string): string {
@@ -124,8 +152,10 @@ export function compileBip388(
   const sortedTokens = [...tokenIndex.keys()].sort((a, b) => b.length - a.length);
   for (const token of sortedTokens) {
     const i = tokenIndex.get(token)!;
+    const entry = byName.get(token);
+    const path = distinctChildPath(entry, byName.get(baseName(token)), token, reuse);
     const re = new RegExp(`(?<![A-Za-z0-9_@])${escapeRe(token)}(?![A-Za-z0-9_])`, "g");
-    inner = inner.replace(re, `@${i}/**`);
+    inner = inner.replace(re, `@${i}${path}`);
   }
 
   const policyKeys: Bip388Key[] = unique.map((k, index) => ({

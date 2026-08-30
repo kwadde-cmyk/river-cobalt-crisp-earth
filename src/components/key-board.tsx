@@ -180,7 +180,7 @@ function KeyTile({
 }: {
   entry: KeyEntry;
   expanded: boolean;
-  aliases: { alias: string; delay: number; account?: number }[];
+  aliases: { alias: string; delay: number; account?: number; branch?: string }[];
   reuseOff: boolean;
   needsAction: boolean;
   childPresent: number;
@@ -257,7 +257,15 @@ function KeyTile({
                   </div>
                 </li>
               ))
-          : null}
+          : aliases
+              .filter((a) => a.branch)
+              .map((a) => (
+                <li key={a.alias} className="rounded-md border border-border/80 bg-elevated/40 px-2 py-1.5">
+                  <p className="font-mono text-2xs text-fg-subtle">
+                    {a.alias} · /{a.branch}
+                  </p>
+                </li>
+              ))}
       </ul>
       {filled ? (
         <button type="button" onClick={onToggle} className="mt-2 text-2xs text-fg-subtle">
@@ -343,7 +351,7 @@ function KeySlotTree({
   reuse,
 }: {
   entry: KeyEntry;
-  needs: { alias: string; delay: number; account?: number }[];
+  needs: { alias: string; delay: number; account?: number; branch?: string }[];
   stages: Stage[];
   reuse: boolean;
 }) {
@@ -373,16 +381,26 @@ function KeySlotTree({
         slots: acc != null ? slotsForAccount(stages, entry.name, acc, reuse) : [],
       };
     }),
-    ...needs
-      .filter((n) => n.account != null && !childForAccount(entry, n.account)?.xpub.trim())
-      .map((n) => ({
-        key: n.alias,
-        role: childRoleLabel(entry.name, accountPathFrom(entry.derivation, n.account!)),
-        path: accountPathFrom(entry.derivation, n.account!),
-        xpub: "",
-        slots: slotsForAccount(stages, entry.name, n.account!, reuse),
-        missing: true,
-      })),
+    ...(!reuse
+      ? needs
+          .filter((n) => n.account != null && !childForAccount(entry, n.account)?.xpub.trim())
+          .map((n) => ({
+            key: n.alias,
+            role: childRoleLabel(entry.name, accountPathFrom(entry.derivation, n.account!)),
+            path: accountPathFrom(entry.derivation, n.account!),
+            xpub: "",
+            slots: slotsForAccount(stages, entry.name, n.account!, reuse),
+            missing: true,
+          }))
+      : needs
+          .filter((n) => n.branch)
+          .map((n) => ({
+            key: n.alias,
+            role: n.alias,
+            path: n.branch!,
+            xpub: entry.xpub,
+            slots: slotsForAccount(stages, entry.name, 0, true).filter((s) => s.delay === n.delay),
+          }))),
   ];
 
   function slotLine(slot: StageSignerSlot, selfRole: string): string {
@@ -537,6 +555,7 @@ function KeyImportDialog({
               {entry.fingerprint ? ` · ${entry.fingerprint}` : ""}
             </p>
             <XpubLine xpub={entry.xpub} />
+            {reuseKeys && needs.some((n) => n.branch) ? <ReusePlan needs={needs} /> : null}
             {!reuseKeys && needs.length ? <AccountPlan entry={entry} needs={needs} /> : null}
             <ImportPane
               draft={draft}
@@ -596,6 +615,7 @@ function KeyImportDialog({
           <TabsContent value="children" className="min-h-0 flex-1 space-y-3 overflow-auto">
             {filled || entry.fingerprint ? (
               <>
+                {reuseKeys ? <ReusePlan needs={needs} /> : null}
                 {!reuseKeys ? <AccountPlan entry={entry} needs={needs} onPick={(path) => setChildDraft(`[${entry.fingerprint}/${path}]`)} /> : null}
                 <p className="font-mono text-2xs text-fg-muted">{t("keys.nextAccount", { path: next.path })}</p>
                 <ImportPane
@@ -683,13 +703,31 @@ function KeyImportDialog({
   );
 }
 
+function ReusePlan({ needs }: { needs: { alias: string; delay: number; branch?: string }[] }) {
+  const { t } = useT();
+  const rows = needs.filter((n) => n.branch);
+  if (!rows.length) return null;
+  return (
+    <div className="space-y-1.5 rounded-lg border border-border bg-elevated px-3 py-2">
+      <p className="text-xs text-fg">{t("keys.reuseOnNeed")}</p>
+      <ul className="space-y-1">
+        {rows.map((n) => (
+          <li key={n.alias} className="font-mono text-2xs text-fg">
+            {n.alias} · /{n.branch}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function AccountPlan({
   entry,
   needs,
   onPick,
 }: {
   entry: KeyEntry;
-  needs: { alias: string; delay: number; account?: number }[];
+  needs: { alias: string; delay: number; account?: number; branch?: string }[];
   onPick?: (path: string) => void;
 }) {
   const { t } = useT();
