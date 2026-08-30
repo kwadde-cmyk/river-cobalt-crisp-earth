@@ -34,13 +34,30 @@ export function defaultRpcPort(network: "mainnet" | "testnet" = "mainnet"): numb
 }
 
 export function normalizeRpcUrl(raw: string, network: "mainnet" | "testnet" = "mainnet"): string {
-  const text = raw.trim();
-  if (!text) return `http://127.0.0.1:${defaultRpcPort(network)}`;
-  if (/^https?:\/\//i.test(text)) return text.replace(/\/+$/, "");
-  if (text.includes("://")) throw new Error("node.err.url");
-  const host = text.replace(/\/+$/, "");
-  if (/:\d+$/.test(host)) return `http://${host}`;
-  return `http://${host}:${defaultRpcPort(network)}`;
+  const fallback = `http://127.0.0.1:${defaultRpcPort(network)}`;
+  try {
+    const text = raw.trim().replace(/^['"<]+|[>'"]+$/g, "");
+    if (!text) return fallback;
+    const embedded = text.match(/https?:\/\/[^\s<>"'`\\]+/i)?.[0];
+    if (embedded) {
+      const u = new URL(embedded.replace(/[),.;]+$/g, ""));
+      if (u.protocol === "http:" || u.protocol === "https:") {
+        const path = u.pathname === "/" ? "" : u.pathname.replace(/\/+$/, "");
+        return `${u.origin}${path}`;
+      }
+    }
+    const token = (text.split(/\s+/)[0] ?? "").replace(/\/+$/, "");
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(token)) {
+      const rest = token.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "");
+      return rest ? normalizeRpcUrl(rest, network) : fallback;
+    }
+    const host = token.replace(/^\/+/, "");
+    if (!host) return fallback;
+    const withScheme = /:\d+$/.test(host) ? `http://${host}` : `http://${host}:${defaultRpcPort(network)}`;
+    return new URL(withScheme).origin;
+  } catch {
+    return fallback;
+  }
 }
 
 export function splitCookie(user: string, pass: string): { username: string; password: string } {

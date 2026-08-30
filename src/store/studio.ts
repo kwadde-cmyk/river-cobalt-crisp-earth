@@ -32,6 +32,7 @@ type Snapshot = {
   network: "mainnet" | "testnet";
   reuseKeys: boolean;
   nesting: Nesting;
+  mode: StudioMode;
 };
 
 function snapOf(s: Snapshot): Snapshot {
@@ -44,10 +45,25 @@ function snapOf(s: Snapshot): Snapshot {
     network: s.network,
     reuseKeys: s.reuseKeys,
     nesting: s.nesting,
+    mode: s.mode,
   };
 }
 
 const HISTORY = 40;
+
+export type StudioMode = "easy" | "expert";
+
+function looksExpert(s: { reuseKeys: boolean; nesting: Nesting; stages: Stage[] }): boolean {
+  return (
+    s.reuseKeys ||
+    s.nesting === "early" ||
+    s.stages.some((st) => st.hash || st.andv || st.sorted || (st.required?.length ?? 0) > 0)
+  );
+}
+
+function easyStages(stages: Stage[]): Stage[] {
+  return stages.map((s) => ({ ...s, hash: false, andv: false, sorted: false }));
+}
 
 interface StudioState {
   keys: KeyEntry[];
@@ -58,6 +74,7 @@ interface StudioState {
   network: "mainnet" | "testnet";
   reuseKeys: boolean;
   nesting: Nesting;
+  mode: StudioMode;
   locale: Locale;
   importError: string | null;
   past: Snapshot[];
@@ -65,6 +82,7 @@ interface StudioState {
   setNetwork: (n: "mainnet" | "testnet") => void;
   setReuseKeys: (v: boolean) => void;
   setNesting: (v: Nesting) => void;
+  setMode: (mode: StudioMode) => void;
   setLocale: (locale: Locale) => void;
   select: (id: string | null) => void;
   selectStage: (id: string | null) => void;
@@ -262,6 +280,7 @@ export const useStudio = create<StudioState>()(
       network: "mainnet",
       reuseKeys: false,
       nesting: "late",
+      mode: "easy",
       locale: "de",
       importError: null,
       past: [],
@@ -293,6 +312,22 @@ export const useStudio = create<StudioState>()(
           return;
         }
         mutate({ nesting });
+      },
+      setMode: (mode) => {
+        if (mode === "expert") {
+          mutate({ mode });
+          return;
+        }
+        const { stages, keys, network } = get();
+        if (stages.length) {
+          mutate({
+            mode: "easy",
+            reuseKeys: false,
+            ...applyStageTree(easyStages(stages), keys, network, false, "late"),
+          });
+          return;
+        }
+        mutate({ mode: "easy", reuseKeys: false, nesting: "late" });
       },
       setLocale: (locale) => set({ locale: isLocale(locale) ? locale : "de" }),
       select: (selectedId) => set({ selectedId, selectedStageId: null }),
@@ -554,8 +589,17 @@ export const useStudio = create<StudioState>()(
         network: s.network,
         reuseKeys: s.reuseKeys,
         nesting: s.nesting,
+        mode: s.mode,
         locale: s.locale,
       }),
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<StudioState>;
+        const next = { ...current, ...p };
+        if (p.mode !== "easy" && p.mode !== "expert") {
+          next.mode = looksExpert(next) ? "expert" : "easy";
+        }
+        return next;
+      },
       skipHydration: true,
     },
   ),

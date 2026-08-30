@@ -21,6 +21,14 @@ describe("bitcoind rpc helpers", () => {
     assert.equal(normalizeRpcUrl("192.168.1.20:18332"), "http://192.168.1.20:18332");
     assert.equal(normalizeRpcUrl("127.0.0.1", "testnet"), "http://127.0.0.1:18332");
     assert.equal(normalizeRpcUrl("https://umbrel.local/"), "https://umbrel.local");
+    assert.equal(
+      normalizeRpcUrl("LAN: https://capable-dosage.local:57521"),
+      "https://capable-dosage.local:57521",
+    );
+    assert.equal(normalizeRpcUrl("<https://node.local:57521>"), "https://node.local:57521");
+    assert.doesNotThrow(() => normalizeRpcUrl("ftp://example.local"));
+    assert.doesNotThrow(() => normalizeRpcUrl("not a url :// oops"));
+    assert.match(normalizeRpcUrl("ftp://example.local:57521"), /example\.local:57521/);
     assert.equal(defaultRpcPort("testnet"), 18332);
     assert.equal(addressSpace("https://192.168.1.80:57521"), "local");
     assert.equal(addressSpace("http://127.0.0.1:8332"), "loopback");

@@ -125,6 +125,7 @@ function OrderVariants() {
   const keys = useStudio((s) => s.keys);
   const reuseKeys = useStudio((s) => s.reuseKeys);
   const nesting = useStudio((s) => s.nesting);
+  const expert = useStudio((s) => s.mode) === "expert";
   const setStages = useStudio((s) => s.setStages);
   const updateKey = useStudio((s) => s.updateKey);
   const root = useStudio((s) => s.root);
@@ -155,7 +156,7 @@ function OrderVariants() {
       );
     });
   }, [variants, needle]);
-  if (count.total <= 1 && !count.capped) {
+  if (!expert || (count.total <= 1 && !count.capped)) {
     if (!checksums.length) return null;
     return (
       <section>

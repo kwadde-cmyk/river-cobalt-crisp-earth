@@ -88,11 +88,13 @@ export function StudioShell() {
             </div>
             <div className="absolute right-3 bottom-2 z-20 hidden lg:flex flex-wrap items-center justify-end gap-2">
               <ImportExportBar />
+              <ModeSwitch />
               <LangSwitch locale={locale} setLocale={setLocale} label={t("header.language")} />
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2 px-3 py-2 lg:hidden">
             <ImportExportBar />
+            <ModeSwitch />
             <LangSwitch locale={locale} setLocale={setLocale} label={t("header.language")} />
           </div>
           <h1 className="sr-only">Scriptwerk — Miniscript Studio</h1>
@@ -173,8 +175,16 @@ function usePaneWidth(key: string, fallback: number, min: number, max: number) {
 
 function DesktopStudio() {
   const { t } = useT();
+  const mode = useStudio((s) => s.mode);
+  const [tab, setTab] = useState("stages");
   const left = usePaneWidth("scriptwerk-left-w", 300, 240, 560);
   const right = usePaneWidth("scriptwerk-right-w", 340, 260, 520);
+  const expert = mode === "expert";
+
+  useEffect(() => {
+    if (!expert && tab === "ops") setTab("stages");
+  }, [expert, tab]);
+
   return (
     <>
       <aside
@@ -182,7 +192,7 @@ function DesktopStudio() {
         style={{ width: left.width }}
         className="relative flex shrink-0 flex-col overflow-hidden border-r border-border"
       >
-        <Tabs defaultValue="stages" className="flex min-h-0 flex-1 flex-col">
+        <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
           <TabsList className="mx-2 mt-3 shrink-0">
             <TabsTrigger value="stages" className="flex-1 px-1.5 text-xs">
               {t("tabs.stages")}
@@ -190,9 +200,11 @@ function DesktopStudio() {
             <TabsTrigger value="keys" className="flex-1 px-1.5 text-xs">
               {t("tabs.keys")}
             </TabsTrigger>
-            <TabsTrigger value="ops" className="flex-1 px-1.5 text-xs">
-              {t("tabs.ops")}
-            </TabsTrigger>
+            {expert ? (
+              <TabsTrigger value="ops" className="flex-1 px-1.5 text-xs">
+                {t("tabs.ops")}
+              </TabsTrigger>
+            ) : null}
           </TabsList>
           <TabsContent
             value="stages"
@@ -206,17 +218,19 @@ function DesktopStudio() {
           >
             <KeyBoard fill />
           </TabsContent>
-          <TabsContent
-            value="ops"
-            className="mt-0 min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col"
-          >
-            <div className="min-h-0 flex-1 overflow-hidden">
-              <OperatorPalette />
-            </div>
-            <div className="shrink-0 border-t border-border">
-              <NodeInspector />
-            </div>
-          </TabsContent>
+          {expert ? (
+            <TabsContent
+              value="ops"
+              className="mt-0 min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col"
+            >
+              <div className="min-h-0 flex-1 overflow-hidden">
+                <OperatorPalette />
+              </div>
+              <div className="shrink-0 border-t border-border">
+                <NodeInspector />
+              </div>
+            </TabsContent>
+          ) : null}
         </Tabs>
         <button
           type="button"
@@ -324,6 +338,31 @@ function MountWhenVisible({
   return (
     <div ref={ref} data-layout={dataLayout} className={className}>
       {show ? children : null}
+    </div>
+  );
+}
+
+function ModeSwitch() {
+  const { t } = useT();
+  const mode = useStudio((s) => s.mode);
+  const setMode = useStudio((s) => s.setMode);
+  return (
+    <div role="group" aria-label={t("header.mode")} className="flex shrink-0 flex-wrap gap-1.5">
+      {(["easy", "expert"] as const).map((code) => (
+        <button
+          key={code}
+          type="button"
+          aria-pressed={mode === code}
+          onClick={() => setMode(code)}
+          className={
+            mode === code
+              ? "h-9 rounded-full bg-primary px-2.5 text-2xs tracking-wide text-primary-foreground"
+              : "h-9 rounded-full border border-border px-2.5 text-2xs tracking-wide text-fg-muted hover:bg-muted hover:text-fg"
+          }
+        >
+          {t(`header.${code}`)}
+        </button>
+      ))}
     </div>
   );
 }

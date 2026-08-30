@@ -45,6 +45,7 @@ export function KeyBoard({ fill = false }: { fill?: boolean }) {
   const setNetwork = useStudio((s) => s.setNetwork);
   const reuseKeys = useStudio((s) => s.reuseKeys);
   const setReuseKeys = useStudio((s) => s.setReuseKeys);
+  const expert = useStudio((s) => s.mode) === "expert";
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [detailsId, setDetailsId] = useState<string | null>(null);
   const details = keys.find((k) => k.id === detailsId) ?? null;
@@ -67,6 +68,7 @@ export function KeyBoard({ fill = false }: { fill?: boolean }) {
   return (
     <div className={fill ? "flex min-h-0 flex-1 flex-col overflow-hidden bg-bg" : "shrink-0 border-b border-border bg-bg"}>
       <div className="flex flex-wrap items-end justify-end gap-3 px-4 pt-3 pb-2">
+        {expert ? (
         <div className="flex flex-col items-center gap-1">
           <span className="inline-flex items-center gap-1 text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">
             <KeyRound className="size-3" aria-hidden />
@@ -102,6 +104,9 @@ export function KeyBoard({ fill = false }: { fill?: boolean }) {
             <NestedKeyStack present={childPresent} total={Math.max(childNeeded, childPresent)} />
           </div>
         </div>
+        ) : (
+          <NestedKeyStack present={childPresent} total={Math.max(childNeeded, childPresent)} />
+        )}
         <div role="group" aria-label={t("keys.network")} className="ml-auto flex shrink-0 flex-wrap gap-1.5">
           <button
             type="button"

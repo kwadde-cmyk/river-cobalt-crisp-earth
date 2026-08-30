@@ -18,6 +18,7 @@ export function StageBuilder() {
   const selectStage = useStudio((s) => s.selectStage);
   const nesting = useStudio((s) => s.nesting);
   const setNesting = useStudio((s) => s.setNesting);
+  const expert = useStudio((s) => s.mode) === "expert";
 
   const allowSorted = sortedMultiAllowed(stages);
   const pool = keys.map((k) => k.name);
@@ -51,8 +52,8 @@ export function StageBuilder() {
     <div className="flex h-full flex-col">
       <div className="px-4 pt-4 pb-2">
         <p className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("stages.title")}</p>
-        <p className="mt-1 text-xs text-pretty text-fg-muted">{t("stages.blurb")}</p>
-        {stages.length > 1 ? (
+        <p className="mt-1 text-xs text-pretty text-fg-muted">{t(expert ? "stages.blurb" : "stages.blurbEasy")}</p>
+        {expert && stages.length > 1 ? (
           <div className="mt-3">
             <p className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("stages.nest")}</p>
             <p className="mt-0.5 text-2xs text-pretty text-fg-muted">{t("stages.nestHint")}</p>
@@ -102,6 +103,7 @@ export function StageBuilder() {
                 entries={keys}
                 canRemove={stages.length > 1}
                 allowSorted={allowSorted}
+                expert={expert}
                 selected={selectedStageId === s.id}
                 onSelect={() => selectStage(s.id)}
                 onChange={(next) => patch(s.id, () => next)}
@@ -124,6 +126,7 @@ function StageCard({
   entries,
   canRemove,
   allowSorted,
+  expert,
   selected,
   onSelect,
   onChange,
@@ -135,6 +138,7 @@ function StageCard({
   entries: KeyEntry[];
   canRemove: boolean;
   allowSorted: boolean;
+  expert: boolean;
   selected: boolean;
   onSelect: () => void;
   onChange: (s: Stage) => void;
@@ -261,17 +265,17 @@ function StageCard({
 
       <div className="mt-3" onClick={(e) => e.stopPropagation()}>
         <Label>{t("stages.inStage")}</Label>
-        <p className="mt-0.5 text-2xs text-pretty text-fg-muted">{t("stages.keyHint")}</p>
+        <p className="mt-0.5 text-2xs text-pretty text-fg-muted">{t(expert ? "stages.keyHint" : "stages.keyHintEasy")}</p>
         <div className="mt-1.5 flex flex-wrap gap-1.5">
           {shown.map((name) => {
             const on = stage.keys.includes(name);
-            const must = Boolean(on && k < n && stage.required?.includes(name));
+            const must = Boolean(expert && on && k < n && stage.required?.includes(name));
             const entry = byName.get(name);
             const filled = entry ? keyIsFilled(entry) : false;
             const idx = stage.keys.indexOf(name);
             return (
               <span key={name} className="inline-flex items-center">
-                {on && idx > 0 ? (
+                {expert && on && idx > 0 ? (
                   <button
                     type="button"
                     className="h-9 w-7 rounded-l-full bg-primary/85 text-primary-foreground hover:bg-primary"
@@ -287,8 +291,8 @@ function StageCard({
                   className={
                     on
                       ? `h-9 bg-primary px-3 font-mono text-xs text-primary-foreground ${
-                          idx > 0 ? "" : "rounded-l-full"
-                        } ${idx >= 0 && idx < n - 1 ? "" : "rounded-r-full"}`
+                          expert && idx > 0 ? "" : "rounded-l-full"
+                        } ${expert && idx >= 0 && idx < n - 1 ? "" : "rounded-r-full"}`
                       : "h-9 rounded-full border border-border px-3 font-mono text-xs text-fg-muted hover:bg-muted hover:text-fg"
                   }
                 >
@@ -296,7 +300,7 @@ function StageCard({
                   {must ? <span className="ml-1 opacity-80">*</span> : null}
                   {filled ? <span className="ml-1.5 inline-block size-1.5 rounded-full bg-current opacity-80" /> : null}
                 </button>
-                {on && idx >= 0 && idx < n - 1 ? (
+                {expert && on && idx >= 0 && idx < n - 1 ? (
                   <button
                     type="button"
                     className="h-9 w-7 rounded-r-full bg-primary/85 text-primary-foreground hover:bg-primary"
@@ -317,7 +321,7 @@ function StageCard({
             + Key
           </button>
         </div>
-        {allowSorted ? (
+        {expert && allowSorted ? (
           <div className="mt-2 flex flex-wrap gap-1.5">
             <button
               type="button"
@@ -347,6 +351,7 @@ function StageCard({
         ) : null}
       </div>
 
+      {expert ? (
       <div className="mt-3" onClick={(e) => e.stopPropagation()}>
         <Label>{t("stages.pubkey")}</Label>
         <p className="mt-0.5 text-2xs text-pretty text-fg-muted">{t("stages.pkHint")}</p>
@@ -377,8 +382,9 @@ function StageCard({
           </button>
         </div>
       </div>
+      ) : null}
 
-      {n >= 2 && k >= n && !stage.hash ? (
+      {expert && n >= 2 && k >= n && !stage.hash ? (
         <div className="mt-3" onClick={(e) => e.stopPropagation()}>
           <Label>{t("stages.andv")}</Label>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -410,7 +416,7 @@ function StageCard({
         </div>
       ) : null}
 
-      {n >= 2 ? (
+      {expert && n >= 2 ? (
       <div className="mt-3" onClick={(e) => e.stopPropagation()}>
         <Label>{t("stages.mustRow")}</Label>
         {k >= n ? (
