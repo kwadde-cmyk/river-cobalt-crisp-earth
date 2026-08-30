@@ -109,3 +109,5 @@ UI unter Port 8080. Tests: `node --experimental-strip-types --test src/lib/minis
 ## Lizenz / Hinweis
 
 Werkzeug zum Entwerfen und Prüfen von Policies. Keine Wallet, kein Signer fürs Hauptnetz ohne eigene Prüfung. Descriptor und Checksumme an Bitcoin Core und am Gerät verifizieren, bevor Coins darauf liegen.
+
+@teh_jenz on X
