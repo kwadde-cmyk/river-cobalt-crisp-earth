@@ -1,8 +1,9 @@
 import { compileBsms, compileDescriptor, compileMiniscript, descriptorOrderVariants } from "@/lib/miniscript/compile";
-import { stageOrderCount } from "@/lib/miniscript/stages";
+import { descriptorChecksums, highlightScript, peekScript, type ScriptSpan } from "@/lib/miniscript/highlight";
+import { stageOrderCount, type Stage } from "@/lib/miniscript/stages";
 import { explainPolicy } from "@/lib/miniscript/explain";
 import { validatePolicy } from "@/lib/miniscript/validate";
-import { blocksWhen } from "@/lib/miniscript/keys";
+import { blocksWhen, type KeyEntry } from "@/lib/miniscript/keys";
 import { numberLocale } from "@/lib/i18n";
 import { useStudio } from "@/store/studio";
 import { Badge } from "@/components/ui/badge";
@@ -111,12 +112,12 @@ export function InterpreterPanel() {
 
         <OrderVariants />
 
-        <CopyBlock title="Miniscript" value={ms} />
-        <CopyBlock
+        <ScriptPeek title="Miniscript" value={ms} />
+        <ScriptPeek
           title="Descriptor (wsh)"
           value={compiled.ok ? compiled.descriptor : compiled.error ?? ""}
         />
-        <CopyBlock title="BSMS" value={compiled.ok ? compileBsms(compiled.descriptor) : ""} />
+        <ScriptPeek title="BSMS" value={compiled.ok ? compileBsms(compiled.descriptor) : ""} />
       </div>
     </ScrollArea>
   );
@@ -137,6 +138,10 @@ function OrderVariants() {
     () => (root ? compileDescriptor(root, keys, reuseKeys) : null),
     [root, keys, reuseKeys],
   );
+  const checksums = useMemo(
+    () => (compiled?.ok ? descriptorChecksums(compiled.descriptor) : []),
+    [compiled],
+  );
   const variants = useMemo(() => {
     if (!open || !stages.length) return [];
     return descriptorOrderVariants(stages, keys, reuseKeys, 120);
@@ -153,7 +158,15 @@ function OrderVariants() {
       );
     });
   }, [variants, needle]);
-  if (count.total <= 1 && !count.capped) return null;
+  if (count.total <= 1 && !count.capped) {
+    if (!checksums.length) return null;
+    return (
+      <section>
+        <p className="mb-1 text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("read.currentCs")}</p>
+        <ChecksumList items={checksums} />
+      </section>
+    );
+  }
   const current =
     compiled?.ok && compiled.descriptor.includes("#")
       ? compiled.descriptor.slice(compiled.descriptor.lastIndexOf("#") + 1)
@@ -169,11 +182,18 @@ function OrderVariants() {
         }}
       >
         <DialogTrigger asChild>
-          <Button variant="outline" className="w-full">
-            {t("read.orders")}
-            <span className="ml-auto font-mono text-2xs text-fg-muted">
-              {count.capped ? `${count.total}+` : count.total}
+          <Button variant="outline" className="h-auto w-full flex-col items-start gap-1 py-2">
+            <span className="flex w-full items-center">
+              {t("read.orders")}
+              <span className="ml-auto font-mono text-2xs text-fg-muted">
+                {count.capped ? `${count.total}+` : count.total}
+              </span>
             </span>
+            {checksums.length ? (
+              <span className="font-mono text-2xs text-fg-muted">
+                {checksums.map((c) => `#${c.checksum}`).join("  ·  ")}
+              </span>
+            ) : null}
           </Button>
         </DialogTrigger>
         <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[min(560px,calc(100vw-1.5rem))] flex-col overflow-hidden">
@@ -182,6 +202,10 @@ function OrderVariants() {
             <DialogDescription>{t("read.ordersHint")}</DialogDescription>
           </DialogHeader>
           <p className="shrink-0 text-xs text-pretty text-fg-muted">{t("read.sortedNote")}</p>
+          <div className="shrink-0 rounded-lg border border-border bg-muted/40 px-3 py-2">
+            <p className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("read.currentCs")}</p>
+            <ChecksumList items={checksums} />
+          </div>
           {shown < count.total ? (
             <p className="shrink-0 text-2xs text-fg-muted">{t("read.ordersCapped", { n: shown, total: count.total })}</p>
           ) : null}
@@ -246,32 +270,86 @@ function OrderVariants() {
   );
 }
 
-function CopyBlock({ title, value }: { title: string; value: string }) {
+function ChecksumList({ items }: { items: { path: string; checksum: string }[] }) {
+  if (!items.length) return null;
+  return (
+    <ul className="mt-1 space-y-0.5">
+      {items.map((c) => (
+        <li key={`${c.path}-${c.checksum}`} className="font-mono text-xs text-fg">
+          {c.path ? <span className="text-fg-muted">/{c.path} </span> : null}
+          #{c.checksum}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ScriptHighlight({
+  value,
+  keys,
+  stages,
+}: {
+  value: string;
+  keys: KeyEntry[];
+  stages: Stage[];
+}) {
+  const spans = useMemo(() => highlightScript(value, keys, stages), [value, keys, stages]);
+  return (
+    <pre className="max-h-[min(28rem,calc(100dvh-14rem))] overflow-auto rounded-lg border border-border bg-ink px-3 py-2 font-mono text-2xs leading-relaxed break-all whitespace-pre-wrap">
+      {spans.map((s, i) => (
+        <Span key={i} span={s} />
+      ))}
+    </pre>
+  );
+}
+
+function Span({ span }: { span: ScriptSpan }) {
+  return <span style={{ color: span.color }}>{span.text}</span>;
+}
+
+function ScriptPeek({ title, value }: { title: string; value: string }) {
   const { t } = useT();
+  const keys = useStudio((s) => s.keys);
+  const stages = useStudio((s) => s.stages);
+  const [open, setOpen] = useState(false);
   const [done, setDone] = useState(false);
   if (!value) return null;
+  const peek = peekScript(value);
   return (
     <section>
-      <div className="mb-1.5 flex items-center justify-between">
-        <h2 className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{title}</h2>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8"
-          onClick={async () => {
-            await navigator.clipboard.writeText(value);
-            setDone(true);
-            toast.success(t("read.copied"));
-            setTimeout(() => setDone(false), 1200);
-          }}
-        >
-          {done ? <Check /> : <Copy />}
-          {t("read.copy")}
-        </Button>
-      </div>
-      <pre className="max-h-40 overflow-auto rounded-lg border border-border bg-ink px-3 py-2 font-mono text-2xs leading-relaxed break-all whitespace-pre-wrap text-paper">
-        {value}
-      </pre>
+      <h2 className="mb-1.5 text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{title}</h2>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        title={t("read.openScript")}
+        className="w-full rounded-lg border border-border bg-ink px-3 py-2 text-left font-mono text-2xs leading-relaxed break-all text-paper hover:border-border-strong"
+      >
+        {peek}
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[min(640px,calc(100vw-1.5rem))] flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
+            <DialogTitle>{title}</DialogTitle>
+            <DialogDescription>{t("read.openScript")}</DialogDescription>
+          </DialogHeader>
+          <ScriptHighlight value={value} keys={keys} stages={stages} />
+          <div className="mt-2 flex justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                await navigator.clipboard.writeText(value);
+                setDone(true);
+                toast.success(t("read.copied"));
+                setTimeout(() => setDone(false), 1200);
+              }}
+            >
+              {done ? <Check /> : <Copy />}
+              {t("read.copy")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

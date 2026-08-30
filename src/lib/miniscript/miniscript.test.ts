@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { checksumOf, coreCanonicalBody, descsumCheck, descsumCreate, stripChecksum } from "./checksum.ts";
+import { descriptorChecksums, highlightScript, peekScript } from "./highlight.ts";
 import {
   compileDescriptor,
   compileMiniscript,
@@ -99,6 +100,31 @@ describe("checksum", () => {
     assert.equal(recv.includes("/0/"), true);
     assert.notEqual(checksumOf(body), checksumOf(recv));
     assert.equal(stripChecksum(descsumCreate(body)), body);
+  });
+});
+
+describe("highlight", () => {
+  it("colors matching parens and distinct keys", () => {
+    const keys = [emptyKey("A"), emptyKey("B")];
+    const spans = highlightScript("wsh(multi(2,A,B))", keys);
+    const a = spans.find((s) => s.text === "A");
+    const b = spans.find((s) => s.text === "B");
+    assert.ok(a && b);
+    assert.notEqual(a.color, b.color);
+    const opens = spans.filter((s) => s.kind === "paren" && s.text === "(");
+    const closes = spans.filter((s) => s.kind === "paren" && s.text === ")");
+    assert.equal(opens.length, closes.length);
+    assert.equal(opens[0]?.color, closes[closes.length - 1]?.color);
+  });
+
+  it("peeks long scripts and lists both checksums", () => {
+    const long = "wsh(or_i(and_v(v:multi(2,A,B),older(144)),pk(C)))#qqqqqqqq";
+    assert.match(peekScript(long, 20), /…#qqqqqqqq$/);
+    const body =
+      "wsh(pk([deadbeef/48'/0'/0'/2']xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5hqK5Gb4u1Q2ZbQW2kfykAPzh9RQQJwYvNUbaMhEaKfLUWuBvYJMTx5N/<0;1>/*))";
+    const list = descriptorChecksums(descsumCreate(body));
+    assert.equal(list.length, 2);
+    assert.notEqual(list[0]?.checksum, list[1]?.checksum);
   });
 });
 
