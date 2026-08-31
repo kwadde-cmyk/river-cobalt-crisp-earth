@@ -39,7 +39,7 @@ import {
   sortKeyEntries,
 } from "./keys.ts";
 import { parseAny } from "./parser.ts";
-import { compileStages, describeStageSlots, inferNesting, inferStages, permutations, slotsForAccount, sortedMultiAllowed, stageFormula, stageHighlightIds, stageIndicesForAccount, stageKeyOrderVariants } from "./stages.ts";
+import { compileStages, delayPresets, describeStageSlots, inferNesting, inferStages, nextStageDelay, permutations, slotsForAccount, sortedMultiAllowed, stageFormula, stageHighlightIds, stageIndicesForAccount, stageKeyOrderVariants } from "./stages.ts";
 import {
   compileBip388,
   formatBitboxJson,
@@ -377,6 +377,13 @@ describe("keys", () => {
 });
 
 describe("stages", () => {
+  it("caps relative lock presets at 65534 by default", () => {
+    assert.deepEqual(delayPresets(65534).slice(-1), [65534]);
+    assert.deepEqual(delayPresets(65535).slice(-1), [65535]);
+    assert.equal(nextStageDelay([{ id: "s", delay: 60000, k: 1, keys: ["A"] }], 65534), 65534);
+    assert.equal(nextStageDelay([{ id: "s", delay: 60000, k: 1, keys: ["A"] }], 65535), 65535);
+  });
+
   it("compiles 2-of-3 without timelock", () => {
     const { root } = compileStages([{ id: "s1", delay: 0, k: 2, keys: ["A", "B", "C"] }]);
     assert.equal(compileMiniscript(root), "multi(2,A,B,C)");

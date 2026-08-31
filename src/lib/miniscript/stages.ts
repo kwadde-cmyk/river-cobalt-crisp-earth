@@ -17,19 +17,34 @@ export interface Stage {
   andv?: boolean;
 }
 
-export const DELAY_PRESETS = [0, 1, 144, 1008, 4320, 52596, 60000, 65535] as const;
+export const DELAY_PRESET_CORE = [0, 1, 144, 1008, 4320, 52596, 60000] as const;
+/** Bitcoin nSequence / older() ceiling. */
 export const MAX_OLDER = 65535;
+/** Nunchuk rejects 65535; this is the compatible default. */
+export const DEFAULT_MAX_OLDER = 65534;
+
+export type MaxOlder = 65534 | 65535;
+
+export function asMaxOlder(n: number): MaxOlder {
+  return n === 65535 ? 65535 : 65534;
+}
+
+export function delayPresets(maxOlder: number = DEFAULT_MAX_OLDER): number[] {
+  return [...DELAY_PRESET_CORE, asMaxOlder(maxOlder)];
+}
+
+export const DELAY_PRESETS = delayPresets(DEFAULT_MAX_OLDER);
 
 export function defaultStages(): Stage[] {
   return [{ id: uid("st"), delay: 0, k: 2, keys: ["A", "B", "C"] }];
 }
 
-export function nextStageDelay(stages: Stage[]): number {
+export function nextStageDelay(stages: Stage[], maxOlder: number = DEFAULT_MAX_OLDER): number {
+  const cap = asMaxOlder(maxOlder);
   const max = Math.max(0, ...stages.map((s) => s.delay));
   if (max <= 0) return 52596;
   if (max < 60000) return 60000;
-  if (max < MAX_OLDER) return MAX_OLDER;
-  return MAX_OLDER;
+  return cap;
 }
 
 /** Core accepts sortedmulti only as the entire wsh() script — one unlocked multi stage. */

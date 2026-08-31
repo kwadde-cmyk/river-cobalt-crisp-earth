@@ -6,10 +6,15 @@ Desktop und Mobil, Deutsch/Englisch. Bitcoin-Node darf auf einer anderen Maschin
 
 ## Features
 
-- **Stufen** — k-von-n, Timelock, Keys die immer mitunterschreiben müssen (`A + (B oder C)`), mehrere Recovery-Stufen
+- **Einfach / Experte** — Kopfleiste. Einfach ist Standard: Spät-zuerst, `pk`, `multi`, Key-Reuse aus, Operatoren-Tab aus. Experte blendet die optionalen Schalter ein.
+- **Stufen** — k-von-n, relatives Timelock (`older` / CSV), Keys die immer mitunterschreiben (`A + (B oder C)`), mehrere Recovery-Stufen
+- **Timelock-Maximum (Experte)** — 65534 (Default, Nunchuk-kompatibel) oder 65535 (Bitcoin-Maximum). Nunchuk lehnt 65535 ab.
+- **Struktur (Experte)** — Spät oder früh zuerst im Descriptor (gleiche Pfade, andere Checksumme)
+- **pk / pkh und 2-von-2 (Experte)** — je Stufe `pk` oder `pkh`; 2-von-2 als `multi` oder `and_v`
 - **Policy-Baum** — Zoom, Stufen antippen hebt den Zweig hervor
-- **Keys** — Name, Fingerprint, A Master / A1 Child getrennt; Reuse an/aus; Import per Text, QR, Datei, USB
-- **Checksummen** — Key-Reihenfolge und Ableitung `0/*` vs `<0;1>/*`; Suche nach bekannter Checksumme
+- **Keys** — Name, Fingerprint, A Master / A1 Child getrennt; Import per Text, QR, Datei, USB
+- **Key-Reuse (Experte)** — Aus: ein Fingerprint = ein Signing-Slot, Childkeys A1, A2 … importieren. An: derselbe xpub mit hochzählender Ableitung in mehreren Stufen
+- **Checksummen (Experte)** — Key-Reihenfolge und Ableitung `0/*` vs `<0;1>/*`; Suche nach bekannter Checksumme
 - **Import / Export** — Descriptor, Miniscript, BSMS, Scriptwerk-JSON, BIP-388 für Ledger und BitBox (QR, Datei, USB)
 - **Bitcoin Core** — `getdescriptorinfo` über Host-Proxy oder Node-Brücke (StartOS, anderer Rechner im LAN)
 - **Hardware** — Ledger Bitcoin-App 2.1+ und BitBox02 (WebHID), Demo ohne Gerät

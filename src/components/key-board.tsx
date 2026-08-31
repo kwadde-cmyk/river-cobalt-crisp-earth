@@ -69,13 +69,12 @@ export function KeyBoard({ fill = false }: { fill?: boolean }) {
     <div className={fill ? "flex min-h-0 flex-1 flex-col overflow-hidden bg-bg" : "shrink-0 border-b border-border bg-bg"}>
       <div className="flex flex-wrap items-end justify-end gap-3 px-4 pt-3 pb-2">
         {expert ? (
-        <div className="flex flex-col items-center gap-1">
-          <span className="inline-flex items-center gap-1 text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">
-            <KeyRound className="size-3" aria-hidden />
-            {t("keys.reuse")}
+        <div className="mr-auto flex min-w-0 max-w-md flex-col items-start gap-1">
+          <span className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">
+            {t("keys.section")}
           </span>
-          <div className="flex items-center gap-2">
-            <div role="group" aria-label={t("keys.reuse")} className="flex flex-wrap gap-1.5">
+          <p className="whitespace-pre-line text-2xs text-pretty text-fg-muted">{t("keys.reuseHint")}</p>
+          <div role="group" aria-label={t("keys.reuse")} className="flex flex-wrap gap-1.5">
               <button
                 type="button"
                 aria-pressed={!reuseKeys}
@@ -100,8 +99,6 @@ export function KeyBoard({ fill = false }: { fill?: boolean }) {
               >
                 {t("keys.reuseOnShort")}
               </button>
-            </div>
-            <NestedKeyStack present={childPresent} total={Math.max(childNeeded, childPresent)} />
           </div>
         </div>
         ) : (

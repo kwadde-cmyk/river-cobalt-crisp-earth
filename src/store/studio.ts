@@ -19,7 +19,7 @@ import {
 } from "@/lib/miniscript/keys";
 import { buildOperator, wrapNode, type BuildParams } from "@/lib/miniscript/operators";
 import { parseAny } from "@/lib/miniscript/parser";
-import { compileStages, defaultStages, inferNesting, inferStages, isDerivedAlias, type Nesting, type Stage } from "@/lib/miniscript/stages";
+import { compileStages, defaultStages, inferNesting, inferStages, isDerivedAlias, type MaxOlder, type Nesting, type Stage } from "@/lib/miniscript/stages";
 import { materializeWalletPolicy, parseScriptwerkBundle, parseWalletPolicy } from "@/lib/miniscript/bip388";
 import { isLocale, localizeMessage, t, type Locale } from "@/lib/i18n";
 
@@ -33,6 +33,7 @@ type Snapshot = {
   reuseKeys: boolean;
   nesting: Nesting;
   mode: StudioMode;
+  maxOlder: MaxOlder;
 };
 
 function snapOf(s: Snapshot): Snapshot {
@@ -46,6 +47,7 @@ function snapOf(s: Snapshot): Snapshot {
     reuseKeys: s.reuseKeys,
     nesting: s.nesting,
     mode: s.mode,
+    maxOlder: s.maxOlder,
   };
 }
 
@@ -53,16 +55,23 @@ const HISTORY = 40;
 
 export type StudioMode = "easy" | "expert";
 
-function looksExpert(s: { reuseKeys: boolean; nesting: Nesting; stages: Stage[] }): boolean {
+function looksExpert(s: { reuseKeys: boolean; nesting: Nesting; stages: Stage[]; maxOlder?: MaxOlder }): boolean {
   return (
     s.reuseKeys ||
     s.nesting === "early" ||
-    s.stages.some((st) => st.hash || st.andv || st.sorted || (st.required?.length ?? 0) > 0)
+    s.maxOlder === 65535 ||
+    s.stages.some((st) => st.hash || st.andv || st.sorted || (st.required?.length ?? 0) > 0 || st.delay >= 65535)
   );
 }
 
 function easyStages(stages: Stage[]): Stage[] {
-  return stages.map((s) => ({ ...s, hash: false, andv: false, sorted: false }));
+  return stages.map((s) => ({
+    ...s,
+    hash: false,
+    andv: false,
+    sorted: false,
+    delay: Math.min(s.delay, 65534),
+  }));
 }
 
 interface StudioState {
@@ -75,6 +84,7 @@ interface StudioState {
   reuseKeys: boolean;
   nesting: Nesting;
   mode: StudioMode;
+  maxOlder: MaxOlder;
   locale: Locale;
   importError: string | null;
   past: Snapshot[];
@@ -83,6 +93,7 @@ interface StudioState {
   setReuseKeys: (v: boolean) => void;
   setNesting: (v: Nesting) => void;
   setMode: (mode: StudioMode) => void;
+  setMaxOlder: (n: MaxOlder) => void;
   setLocale: (locale: Locale) => void;
   select: (id: string | null) => void;
   selectStage: (id: string | null) => void;
@@ -281,6 +292,7 @@ export const useStudio = create<StudioState>()(
       reuseKeys: false,
       nesting: "late",
       mode: "easy",
+      maxOlder: 65534,
       locale: "de",
       importError: null,
       past: [],
@@ -323,11 +335,22 @@ export const useStudio = create<StudioState>()(
           mutate({
             mode: "easy",
             reuseKeys: false,
+            maxOlder: 65534,
             ...applyStageTree(easyStages(stages), keys, network, false, "late"),
           });
           return;
         }
-        mutate({ mode: "easy", reuseKeys: false, nesting: "late" });
+        mutate({ mode: "easy", reuseKeys: false, nesting: "late", maxOlder: 65534 });
+      },
+      setMaxOlder: (n) => {
+        const maxOlder = n === 65535 ? 65535 : 65534;
+        const { stages, keys, network, reuseKeys, nesting } = get();
+        const next = stages.map((s) => ({ ...s, delay: Math.min(s.delay, maxOlder) }));
+        if (stages.length) {
+          mutate({ maxOlder, ...applyStageTree(next, keys, network, reuseKeys, nesting) });
+          return;
+        }
+        mutate({ maxOlder });
       },
       setLocale: (locale) => set({ locale: isLocale(locale) ? locale : "de" }),
       select: (selectedId) => set({ selectedId, selectedStageId: null }),
@@ -590,6 +613,7 @@ export const useStudio = create<StudioState>()(
         reuseKeys: s.reuseKeys,
         nesting: s.nesting,
         mode: s.mode,
+        maxOlder: s.maxOlder,
         locale: s.locale,
       }),
       merge: (persisted, current) => {
@@ -597,6 +621,9 @@ export const useStudio = create<StudioState>()(
         const next = { ...current, ...p };
         if (p.mode !== "easy" && p.mode !== "expert") {
           next.mode = looksExpert(next) ? "expert" : "easy";
+        }
+        if (p.maxOlder !== 65534 && p.maxOlder !== 65535) {
+          next.maxOlder = next.stages.some((st) => st.delay >= 65535) ? 65535 : 65534;
         }
         return next;
       },

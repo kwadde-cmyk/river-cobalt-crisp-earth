@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { OPERATORS, WRAPPERS, type OperatorDef } from "@/lib/miniscript/operators";
-import { DELAY_PRESETS } from "@/lib/miniscript/stages";
+import { delayPresets } from "@/lib/miniscript/stages";
 import { useStudio } from "@/store/studio";
 import { Button } from "@/components/ui/button";
 import {
@@ -126,6 +126,7 @@ function ParamDialog({
   onApply: (p: { key?: string; keys?: string[]; n?: number; k?: number; childCount?: number }) => void;
 }) {
   const { t } = useT();
+  const maxOlder = useStudio((s) => s.maxOlder);
   const [key, setKey] = useState(keyNames[0] ?? "A");
   const [keys, setKeys] = useState<string[]>(
     keyNames.slice(0, 3).length ? keyNames.slice(0, 3) : ["A", "B", "C"],
@@ -204,10 +205,16 @@ function ParamDialog({
           ) : null}
           {op.params.some((p) => p.kind === "blocks") ? (
             <Field label={op.id === "older" ? t("ops.blocksCsv") : t("ops.heightCltv")}>
-              <Input type="number" min={1} max={65535} value={n} onChange={(e) => setN(Number(e.target.value))} />
+              <Input
+                type="number"
+                min={1}
+                max={op.id === "older" ? maxOlder : 4294967295}
+                value={n}
+                onChange={(e) => setN(Number(e.target.value))}
+              />
               {op.id === "older" ? (
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  {DELAY_PRESETS.filter((v) => v > 0).map((v) => (
+                  {delayPresets(maxOlder).filter((v) => v > 0).map((v) => (
                     <button
                       key={v}
                       type="button"
@@ -230,7 +237,7 @@ function ParamDialog({
                 onApply({
                   key,
                   keys,
-                  n,
+                  n: op.id === "older" ? Math.max(1, Math.min(maxOlder, n)) : n,
                   k,
                   childCount,
                 })

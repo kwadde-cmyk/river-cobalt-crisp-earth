@@ -1,4 +1,4 @@
-import { DELAY_PRESETS, defaultStages, nextStageDelay, sortedMultiAllowed, stageFormula, type Stage } from "@/lib/miniscript/stages";
+import { delayPresets, defaultStages, nextStageDelay, sortedMultiAllowed, stageFormula, type Stage } from "@/lib/miniscript/stages";
 import { blocksWhen, keyIsFilled, nextKeyName, type KeyEntry } from "@/lib/miniscript/keys";
 import { uid } from "@/lib/utils";
 import { useStudio } from "@/store/studio";
@@ -18,6 +18,8 @@ export function StageBuilder() {
   const selectStage = useStudio((s) => s.selectStage);
   const nesting = useStudio((s) => s.nesting);
   const setNesting = useStudio((s) => s.setNesting);
+  const maxOlder = useStudio((s) => s.maxOlder);
+  const setMaxOlder = useStudio((s) => s.setMaxOlder);
   const expert = useStudio((s) => s.mode) === "expert";
 
   const allowSorted = sortedMultiAllowed(stages);
@@ -32,7 +34,7 @@ export function StageBuilder() {
       setStages(defaultStages());
       return;
     }
-    const delay = nextStageDelay(stages);
+    const delay = nextStageDelay(stages, maxOlder);
     const prev = stages[stages.length - 1];
     const names = prev?.keys.length ? [...prev.keys] : pool.slice(0, 3);
     const extra = nextKeyName([...pool, ...names]);
@@ -53,6 +55,38 @@ export function StageBuilder() {
       <div className="px-4 pt-4 pb-2">
         <p className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("stages.title")}</p>
         <p className="mt-1 text-xs text-pretty text-fg-muted">{t(expert ? "stages.blurb" : "stages.blurbEasy")}</p>
+        {expert ? (
+          <div className="mt-3">
+            <p className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("stages.maxOlder")}</p>
+            <p className="mt-0.5 text-2xs text-pretty text-fg-muted">{t("stages.maxOlderHint")}</p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                aria-pressed={maxOlder === 65534}
+                onClick={() => setMaxOlder(65534)}
+                className={
+                  maxOlder === 65534
+                    ? "h-9 rounded-full bg-primary px-3 font-mono text-xs text-primary-foreground"
+                    : "h-9 rounded-full border border-border px-3 font-mono text-xs text-fg-muted hover:bg-muted hover:text-fg"
+                }
+              >
+                65534
+              </button>
+              <button
+                type="button"
+                aria-pressed={maxOlder === 65535}
+                onClick={() => setMaxOlder(65535)}
+                className={
+                  maxOlder === 65535
+                    ? "h-9 rounded-full bg-primary px-3 font-mono text-xs text-primary-foreground"
+                    : "h-9 rounded-full border border-border px-3 font-mono text-xs text-fg-muted hover:bg-muted hover:text-fg"
+                }
+              >
+                65535
+              </button>
+            </div>
+          </div>
+        ) : null}
         {expert && stages.length > 1 ? (
           <div className="mt-3">
             <p className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("stages.nest")}</p>
@@ -104,6 +138,7 @@ export function StageBuilder() {
                 canRemove={stages.length > 1}
                 allowSorted={allowSorted}
                 expert={expert}
+                maxOlder={maxOlder}
                 selected={selectedStageId === s.id}
                 onSelect={() => selectStage(s.id)}
                 onChange={(next) => patch(s.id, () => next)}
@@ -127,6 +162,7 @@ function StageCard({
   canRemove,
   allowSorted,
   expert,
+  maxOlder,
   selected,
   onSelect,
   onChange,
@@ -139,6 +175,7 @@ function StageCard({
   canRemove: boolean;
   allowSorted: boolean;
   expert: boolean;
+  maxOlder: number;
   selected: boolean;
   onSelect: () => void;
   onChange: (s: Stage) => void;
@@ -454,16 +491,16 @@ function StageCard({
           id={`delay-${stage.id}`}
           type="number"
           min={0}
-          max={65535}
+          max={maxOlder}
           value={stage.delay}
           onChange={(e) => {
-            const delay = Math.max(0, Math.min(65535, Number(e.target.value) || 0));
+            const delay = Math.max(0, Math.min(maxOlder, Number(e.target.value) || 0));
             onChange({ ...stage, delay, sorted: delay > 0 ? false : stage.sorted });
           }}
           className="mt-1.5 font-mono"
         />
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {DELAY_PRESETS.map((nDelay) => (
+          {delayPresets(maxOlder).map((nDelay) => (
             <button
               key={nDelay}
               type="button"
