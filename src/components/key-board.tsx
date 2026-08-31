@@ -44,6 +44,7 @@ export function KeyBoard({ fill = false }: { fill?: boolean }) {
   const network = useStudio((s) => s.network);
   const setNetwork = useStudio((s) => s.setNetwork);
   const reuseKeys = useStudio((s) => s.reuseKeys);
+  const removeUnusedKeys = useStudio((s) => s.removeUnusedKeys);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [detailsId, setDetailsId] = useState<string | null>(null);
   const details = keys.find((k) => k.id === detailsId) ?? null;
@@ -53,6 +54,7 @@ export function KeyBoard({ fill = false }: { fill?: boolean }) {
     stages.length ? keys.filter((k) => !isDerivedAlias(k.name, masters)) : keys,
     stages,
   );
+  const unusedCount = visible.filter((k) => !masters.has(k.name)).length;
   const childPresent = visible.reduce((n, k) => n + k.children.filter((c) => c.xpub.trim()).length, 0);
   const childNeeded = reuseKeys
     ? childPresent
@@ -67,6 +69,19 @@ export function KeyBoard({ fill = false }: { fill?: boolean }) {
     <div className={fill ? "flex min-h-0 flex-1 flex-col overflow-hidden bg-bg" : "shrink-0 border-b border-border bg-bg"}>
       <div className="flex flex-wrap items-end justify-end gap-3 px-4 pt-3 pb-2">
         <NestedKeyStack present={childPresent} total={Math.max(childNeeded, childPresent)} />
+        {unusedCount ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const n = removeUnusedKeys();
+              if (n) toast.success(t("keys.pruned", { n: String(n) }));
+            }}
+          >
+            {t("keys.prune")}
+          </Button>
+        ) : null}
         <div role="group" aria-label={t("keys.network")} className="ml-auto flex shrink-0 flex-wrap gap-1.5">
           <button
             type="button"
@@ -107,6 +122,7 @@ export function KeyBoard({ fill = false }: { fill?: boolean }) {
                 aliases={aliases.get(k.name) ?? []}
                 reuseOff={!reuseKeys}
                 needsAction={Boolean(keyNeedsAction(k, aliases.get(k.name) ?? [], reuseKeys))}
+                used={masters.has(k.name)}
                 childPresent={k.children.filter((c) => c.xpub.trim()).length}
                 childTotal={
                   reuseKeys
@@ -139,6 +155,7 @@ function KeyTile({
   aliases,
   reuseOff,
   needsAction,
+  used,
   childPresent,
   childTotal,
   onToggle,
@@ -148,6 +165,7 @@ function KeyTile({
   aliases: { alias: string; delay: number; account?: number; branch?: string }[];
   reuseOff: boolean;
   needsAction: boolean;
+  used: boolean;
   childPresent: number;
   childTotal: number;
   onToggle: () => void;
@@ -175,6 +193,9 @@ function KeyTile({
         className={`flex min-h-10 w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-left text-xs transition-colors duration-150 ${tileClass}`}
       >
         <span className="min-w-0 flex-1 truncate">{name || t("keys.unnamed")}</span>
+        <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-2xs ${used ? "bg-muted text-fg-subtle" : "text-fg-muted"}`}>
+          {used ? t("keys.inUse") : t("keys.idle")}
+        </span>
         <span className="shrink-0 font-mono text-2xs text-fg-muted">{fp || "—"}</span>
         <span className={`shrink-0 font-mono text-2xs ${needsAction ? "text-danger" : "text-fg-subtle"}`}>{role}</span>
         {childTotal > 0 ? <NestedKeyStack present={childPresent} total={childTotal} compact /> : null}
@@ -196,6 +217,9 @@ function KeyTile({
         className="flex w-full items-baseline justify-between gap-2 text-left"
       >
         <p className="min-w-0 truncate text-sm text-fg">{name || t("keys.unnamed")}</p>
+        <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-2xs ${used ? "bg-muted text-fg-subtle" : "text-fg-muted"}`}>
+          {used ? t("keys.inUse") : t("keys.idle")}
+        </span>
         <span className={`shrink-0 font-mono text-2xs ${needsAction ? "text-danger" : "text-fg-subtle"}`}>{role}</span>
         {childTotal > 0 ? <NestedKeyStack present={childPresent} total={childTotal} compact /> : null}
       </button>

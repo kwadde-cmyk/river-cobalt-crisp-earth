@@ -38,6 +38,7 @@ import {
   sequentialKeyNames,
   sortKeyEntries,
 } from "./keys.ts";
+import { visit } from "./ast.ts";
 import { parseAny } from "./parser.ts";
 import { compileStages, delayPresets, describeStageSlots, inferNesting, inferStages, nextStageDelay, permutations, slotsForAccount, sortedMultiAllowed, stageFormula, stageHighlightIds, stageIndicesForAccount, stageKeyOrderVariants } from "./stages.ts";
 import {
@@ -672,6 +673,26 @@ describe("stages", () => {
     const miss = stageHighlightIds(node, stages, stages[2]!.id);
     assert.ok(miss.size >= 2);
     assert.notEqual(hit.size, miss.size);
+  });
+
+  it("highlights a must-sign stage without lighting sibling stages", () => {
+    const stages = [
+      { id: "s0", delay: 0, k: 2, keys: ["A", "B", "C"], required: ["A"] },
+      { id: "s1", delay: 52596, k: 2, keys: ["A", "B", "C", "D"] },
+    ];
+    const { root } = compileStages(stages, false);
+    const a = stageHighlightIds(root, stages, "s0");
+    const b = stageHighlightIds(root, stages, "s1");
+    assert.ok(a.size >= 1);
+    assert.ok(b.size >= 1);
+    for (const id of a) assert.equal(b.has(id), false);
+    const names = new Set<string>();
+    visit(root, (n) => {
+      if (!a.has(n.id)) return;
+      if (n.kind === "pk" || n.kind === "pkh") names.add(n.key);
+      if (n.kind === "multi") for (const k of n.keys) names.add(k);
+    });
+    assert.equal([...names].some((k) => k === "D" || k.startsWith("D")), false);
   });
 
   it("highlights distinct compiled stage branches", () => {

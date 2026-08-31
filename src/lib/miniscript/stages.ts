@@ -465,6 +465,13 @@ function branchIsAndV(n: MsNode): boolean {
   return u.kind === "and_v" || u.kind === "and_b";
 }
 
+function stageAndV(body: MsNode, flat: { keys: string[]; k: number; required?: string[] }): boolean {
+  if (branchHasPkh(body)) return false;
+  const req = flat.required ?? [];
+  if (req.length > 0 && req.length < flat.keys.length) return false;
+  return branchIsAndV(body);
+}
+
 function stageSig(delay: number, keys: string[], k: number, required?: string[], hash?: boolean, andv?: boolean): string {
   const sorted = [...keys].sort();
   const req = (required ?? []).filter((x) => keys.includes(x)).sort();
@@ -490,7 +497,7 @@ export function inferStages(root: MsNode | null): Stage[] {
       keys: flat.keys,
       required: flat.required,
       hash: branchHasPkh(body),
-      andv: !branchHasPkh(body) && branchIsAndV(body),
+      andv: stageAndV(body, flat),
     });
   }
   if (!stages.length) return [];
@@ -512,22 +519,23 @@ export function stageHighlightIds(
   const target = stages.find((s) => s.id === stageId);
   if (!target) return ids;
   const want = stageSig(target.delay, target.keys, target.k, target.required, target.hash, target.andv);
-  for (const branch of splitDisjuncts(root)) {
+  const wantLoose = stageSig(target.delay, target.keys, target.k, target.required, target.hash, false);
+  const branches = splitDisjuncts(root);
+  for (const branch of branches) {
     const { delay, body } = peelLock(branch);
     const shape = shapeOf(body);
     if (!shape) continue;
     const flat = flattenShape(shape);
-    if (stageSig(delay, flat.keys, flat.k, flat.required, branchHasPkh(body), !branchHasPkh(body) && branchIsAndV(body)) !== want) continue;
+    const hash = branchHasPkh(body);
+    const andv = stageAndV(body, flat);
+    const got = stageSig(delay, flat.keys, flat.k, flat.required, hash, andv);
+    const gotLoose = stageSig(delay, flat.keys, flat.k, flat.required, hash, false);
+    if (got !== want && gotLoose !== wantLoose) continue;
     visit(branch, (n) => ids.add(n.id));
     break;
   }
-  if (ids.size) return ids;
-  const names = new Set(target.keys.map(baseKeyName));
-  visit(root, (n) => {
-    if ((n.kind === "pk" || n.kind === "pkh") && names.has(baseKeyName(n.key))) ids.add(n.id);
-    if (n.kind === "multi" && n.keys.some((k) => names.has(baseKeyName(k)))) ids.add(n.id);
-    if ((n.kind === "older" || n.kind === "after") && n.n === target.delay && target.delay > 0) ids.add(n.id);
-  });
+  if (ids.size || branches.length > 1) return ids;
+  visit(root, (n) => ids.add(n.id));
   return ids;
 }
 

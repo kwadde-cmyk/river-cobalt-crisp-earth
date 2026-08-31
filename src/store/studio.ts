@@ -109,6 +109,7 @@ interface StudioState {
   addKey: () => void;
   updateKey: (id: string, patch: Partial<KeyEntry>) => void;
   removeKey: (id: string) => void;
+  removeUnusedKeys: () => number;
   removeChild: (keyId: string, childId: string) => void;
   importText: (text: string) => void;
   importKeysText: (text: string) => void;
@@ -480,6 +481,15 @@ export const useStudio = create<StudioState>()(
             nesting,
           ),
         );
+      },
+      removeUnusedKeys: () => {
+        const { keys, stages } = get();
+        const used = new Set(stages.flatMap((s) => s.keys));
+        const next = keys.filter((k) => used.has(k.name) || isDerivedAlias(k.name, used));
+        const dropped = keys.length - next.length;
+        if (!dropped) return 0;
+        mutate({ keys: next });
+        return dropped;
       },
       removeChild: (keyId, childId) => {
         mutate({
