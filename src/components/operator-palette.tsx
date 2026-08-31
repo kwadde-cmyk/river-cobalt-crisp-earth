@@ -17,7 +17,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useT } from "@/lib/use-t";
 import { Plus, Minus } from "lucide-react";
 
-export function OperatorPalette() {
+export function OperatorPalette({ embedded = false }: { embedded?: boolean }) {
   const { t } = useT();
   const applyOperator = useStudio((s) => s.applyOperator);
   const wrapSelected = useStudio((s) => s.wrapSelected);
@@ -42,13 +42,7 @@ export function OperatorPalette() {
     setPending(op);
   }
 
-  return (
-    <div className="flex h-full flex-col">
-      <div className="px-4 pt-4 pb-2">
-        <p className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("ops.title")}</p>
-        <p className="mt-1 text-xs text-fg-muted">{t("ops.blurb")}</p>
-      </div>
-      <ScrollArea className="min-h-0 flex-1 px-3 pb-4">
+  const inner = (
         <div className="space-y-4">
           {groups.map(([group, ops]) => (
             <section key={group}>
@@ -98,7 +92,19 @@ export function OperatorPalette() {
             </div>
           </section>
         </div>
-      </ScrollArea>
+  );
+
+  return (
+    <div className={embedded ? "" : "flex h-full flex-col"}>
+      <div className="px-4 pt-4 pb-2">
+        <p className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("ops.title")}</p>
+        <p className="mt-1 text-xs text-fg-muted">{t("ops.blurb")}</p>
+      </div>
+      {embedded ? (
+        <div className="px-3 pb-4">{inner}</div>
+      ) : (
+        <ScrollArea className="min-h-0 flex-1 px-3 pb-4">{inner}</ScrollArea>
+      )}
       {pending ? (
         <ParamDialog
           op={pending}

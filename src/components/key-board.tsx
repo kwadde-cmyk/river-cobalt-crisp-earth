@@ -44,8 +44,6 @@ export function KeyBoard({ fill = false }: { fill?: boolean }) {
   const network = useStudio((s) => s.network);
   const setNetwork = useStudio((s) => s.setNetwork);
   const reuseKeys = useStudio((s) => s.reuseKeys);
-  const setReuseKeys = useStudio((s) => s.setReuseKeys);
-  const expert = useStudio((s) => s.mode) === "expert";
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [detailsId, setDetailsId] = useState<string | null>(null);
   const details = keys.find((k) => k.id === detailsId) ?? null;
@@ -68,42 +66,7 @@ export function KeyBoard({ fill = false }: { fill?: boolean }) {
   return (
     <div className={fill ? "flex min-h-0 flex-1 flex-col overflow-hidden bg-bg" : "shrink-0 border-b border-border bg-bg"}>
       <div className="flex flex-wrap items-end justify-end gap-3 px-4 pt-3 pb-2">
-        {expert ? (
-        <div className="mr-auto flex min-w-0 max-w-md flex-col items-start gap-1">
-          <span className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">
-            {t("keys.section")}
-          </span>
-          <p className="whitespace-pre-line text-2xs text-pretty text-fg-muted">{t("keys.reuseHint")}</p>
-          <div role="group" aria-label={t("keys.reuse")} className="flex flex-wrap gap-1.5">
-              <button
-                type="button"
-                aria-pressed={!reuseKeys}
-                onClick={() => setReuseKeys(false)}
-                className={
-                  !reuseKeys
-                    ? "h-9 rounded-full bg-primary px-3 text-xs text-primary-foreground"
-                    : "h-9 rounded-full border border-border px-3 text-xs text-fg-muted hover:bg-muted hover:text-fg"
-                }
-              >
-                {t("keys.reuseOffShort")}
-              </button>
-              <button
-                type="button"
-                aria-pressed={reuseKeys}
-                onClick={() => setReuseKeys(true)}
-                className={
-                  reuseKeys
-                    ? "h-9 rounded-full bg-primary px-3 text-xs text-primary-foreground"
-                    : "h-9 rounded-full border border-border px-3 text-xs text-fg-muted hover:bg-muted hover:text-fg"
-                }
-              >
-                {t("keys.reuseOnShort")}
-              </button>
-          </div>
-        </div>
-        ) : (
-          <NestedKeyStack present={childPresent} total={Math.max(childNeeded, childPresent)} />
-        )}
+        <NestedKeyStack present={childPresent} total={Math.max(childNeeded, childPresent)} />
         <div role="group" aria-label={t("keys.network")} className="ml-auto flex shrink-0 flex-wrap gap-1.5">
           <button
             type="button"
@@ -279,6 +242,44 @@ function KeyTile({
           {t("keys.nextAccount", { path: nextUnusedAccount(entry).path })}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+export function KeyReuseControls() {
+  const { t } = useT();
+  const reuseKeys = useStudio((s) => s.reuseKeys);
+  const setReuseKeys = useStudio((s) => s.setReuseKeys);
+  return (
+    <div className="flex min-w-0 flex-col items-start gap-1">
+      <span className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("keys.section")}</span>
+      <p className="whitespace-pre-line text-2xs text-pretty text-fg-muted">{t("keys.reuseHint")}</p>
+      <div role="group" aria-label={t("keys.reuse")} className="flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          aria-pressed={!reuseKeys}
+          onClick={() => setReuseKeys(false)}
+          className={
+            !reuseKeys
+              ? "h-9 rounded-full bg-primary px-3 text-xs text-primary-foreground"
+              : "h-9 rounded-full border border-border px-3 text-xs text-fg-muted hover:bg-muted hover:text-fg"
+          }
+        >
+          {t("keys.reuseOffShort")}
+        </button>
+        <button
+          type="button"
+          aria-pressed={reuseKeys}
+          onClick={() => setReuseKeys(true)}
+          className={
+            reuseKeys
+              ? "h-9 rounded-full bg-primary px-3 text-xs text-primary-foreground"
+              : "h-9 rounded-full border border-border px-3 text-xs text-fg-muted hover:bg-muted hover:text-fg"
+          }
+        >
+          {t("keys.reuseOnShort")}
+        </button>
+      </div>
     </div>
   );
 }

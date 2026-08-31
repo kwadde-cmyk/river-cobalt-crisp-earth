@@ -16,10 +16,7 @@ export function StageBuilder() {
   const setStages = useStudio((s) => s.setStages);
   const selectedStageId = useStudio((s) => s.selectedStageId);
   const selectStage = useStudio((s) => s.selectStage);
-  const nesting = useStudio((s) => s.nesting);
-  const setNesting = useStudio((s) => s.setNesting);
   const maxOlder = useStudio((s) => s.maxOlder);
-  const setMaxOlder = useStudio((s) => s.setMaxOlder);
   const expert = useStudio((s) => s.mode) === "expert";
 
   const allowSorted = sortedMultiAllowed(stages);
@@ -55,70 +52,6 @@ export function StageBuilder() {
       <div className="px-4 pt-4 pb-2">
         <p className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("stages.title")}</p>
         <p className="mt-1 text-xs text-pretty text-fg-muted">{t(expert ? "stages.blurb" : "stages.blurbEasy")}</p>
-        {expert ? (
-          <div className="mt-3">
-            <p className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("stages.maxOlder")}</p>
-            <p className="mt-0.5 text-2xs text-pretty text-fg-muted">{t("stages.maxOlderHint")}</p>
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              <button
-                type="button"
-                aria-pressed={maxOlder === 65534}
-                onClick={() => setMaxOlder(65534)}
-                className={
-                  maxOlder === 65534
-                    ? "h-9 rounded-full bg-primary px-3 font-mono text-xs text-primary-foreground"
-                    : "h-9 rounded-full border border-border px-3 font-mono text-xs text-fg-muted hover:bg-muted hover:text-fg"
-                }
-              >
-                65534
-              </button>
-              <button
-                type="button"
-                aria-pressed={maxOlder === 65535}
-                onClick={() => setMaxOlder(65535)}
-                className={
-                  maxOlder === 65535
-                    ? "h-9 rounded-full bg-primary px-3 font-mono text-xs text-primary-foreground"
-                    : "h-9 rounded-full border border-border px-3 font-mono text-xs text-fg-muted hover:bg-muted hover:text-fg"
-                }
-              >
-                65535
-              </button>
-            </div>
-          </div>
-        ) : null}
-        {expert && stages.length > 1 ? (
-          <div className="mt-3">
-            <p className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("stages.nest")}</p>
-            <p className="mt-0.5 text-2xs text-pretty text-fg-muted">{t("stages.nestHint")}</p>
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              <button
-                type="button"
-                aria-pressed={nesting === "late"}
-                onClick={() => setNesting("late")}
-                className={
-                  nesting === "late"
-                    ? "h-9 rounded-full bg-primary px-3 text-xs text-primary-foreground"
-                    : "h-9 rounded-full border border-border px-3 text-xs text-fg-muted hover:bg-muted hover:text-fg"
-                }
-              >
-                {t("stages.nestLate")}
-              </button>
-              <button
-                type="button"
-                aria-pressed={nesting === "early"}
-                onClick={() => setNesting("early")}
-                className={
-                  nesting === "early"
-                    ? "h-9 rounded-full bg-primary px-3 text-xs text-primary-foreground"
-                    : "h-9 rounded-full border border-border px-3 text-xs text-fg-muted hover:bg-muted hover:text-fg"
-                }
-              >
-                {t("stages.nestEarly")}
-              </button>
-            </div>
-          </div>
-        ) : null}
       </div>
       <ScrollArea className="min-h-0 flex-1 px-3 pb-4">
         <div className="space-y-3">
@@ -150,6 +83,81 @@ export function StageBuilder() {
           </Button>
         </div>
       </ScrollArea>
+    </div>
+  );
+}
+
+export function ExpertPolicySettings() {
+  const { t } = useT();
+  const stages = useStudio((s) => s.stages);
+  const nesting = useStudio((s) => s.nesting);
+  const setNesting = useStudio((s) => s.setNesting);
+  const maxOlder = useStudio((s) => s.maxOlder);
+  const setMaxOlder = useStudio((s) => s.setMaxOlder);
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("stages.maxOlder")}</p>
+        <p className="mt-0.5 text-2xs text-pretty text-fg-muted">{t("stages.maxOlderHint")}</p>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            aria-pressed={maxOlder === 65534}
+            onClick={() => setMaxOlder(65534)}
+            className={
+              maxOlder === 65534
+                ? "h-9 rounded-full bg-primary px-3 font-mono text-xs text-primary-foreground"
+                : "h-9 rounded-full border border-border px-3 font-mono text-xs text-fg-muted hover:bg-muted hover:text-fg"
+            }
+          >
+            65534
+          </button>
+          <button
+            type="button"
+            aria-pressed={maxOlder === 65535}
+            onClick={() => setMaxOlder(65535)}
+            className={
+              maxOlder === 65535
+                ? "h-9 rounded-full bg-primary px-3 font-mono text-xs text-primary-foreground"
+                : "h-9 rounded-full border border-border px-3 font-mono text-xs text-fg-muted hover:bg-muted hover:text-fg"
+            }
+          >
+            65535
+          </button>
+        </div>
+      </div>
+      {stages.length > 1 ? (
+        <div>
+          <p className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("stages.nest")}</p>
+          <p className="mt-0.5 text-2xs text-pretty text-fg-muted">{t("stages.nestHint")}</p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              aria-pressed={nesting === "late"}
+              onClick={() => setNesting("late")}
+              className={
+                nesting === "late"
+                  ? "h-9 rounded-full bg-primary px-3 text-xs text-primary-foreground"
+                  : "h-9 rounded-full border border-border px-3 text-xs text-fg-muted hover:bg-muted hover:text-fg"
+              }
+            >
+              {t("stages.nestLate")}
+            </button>
+            <button
+              type="button"
+              aria-pressed={nesting === "early"}
+              onClick={() => setNesting("early")}
+              className={
+                nesting === "early"
+                  ? "h-9 rounded-full bg-primary px-3 text-xs text-primary-foreground"
+                  : "h-9 rounded-full border border-border px-3 text-xs text-fg-muted hover:bg-muted hover:text-fg"
+              }
+            >
+              {t("stages.nestEarly")}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

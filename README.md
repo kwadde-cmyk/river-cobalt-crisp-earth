@@ -6,7 +6,7 @@ Desktop und Mobil, Deutsch/Englisch. Bitcoin-Node darf auf einer anderen Maschin
 
 ## Features
 
-- **Einfach / Experte** — Kopfleiste. Einfach ist Standard: Spät-zuerst, `pk`, `multi`, Key-Reuse aus, Operatoren-Tab aus. Experte blendet die optionalen Schalter ein.
+- **Einfach / Experte** — Umschalter in der Kopfleiste, Einfach ist Standard. Experte blendet den Tab **Expert** ein (Desktop und Mobil): max. relatives Timelock, Struktur, Key-Reuse, Miniscript-Operatoren. Einfach blendet den Tab und die erweiterten Stufen-Optionen aus.
 - **Stufen** — k-von-n, relatives Timelock (`older` / CSV), Keys die immer mitunterschreiben (`A + (B oder C)`), mehrere Recovery-Stufen
 - **Timelock-Maximum (Experte)** — 65534 (Default, Nunchuk-kompatibel) oder 65535 (Bitcoin-Maximum). Nunchuk lehnt 65535 ab.
 - **Struktur (Experte)** — Spät oder früh zuerst im Descriptor (gleiche Pfade, andere Checksumme)

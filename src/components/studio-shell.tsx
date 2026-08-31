@@ -3,9 +3,9 @@ import { InterpreterPanel } from "@/components/interpreter-panel";
 import { ImportExportBar } from "@/components/import-export";
 import { KeyDatalist, OperatorPalette } from "@/components/operator-palette";
 import { NodeInspector } from "@/components/node-inspector";
-import { KeyBoard } from "@/components/key-board";
+import { KeyBoard, KeyReuseControls } from "@/components/key-board";
 import { PolicyGraph } from "@/components/policy-graph";
-import { StageBuilder } from "@/components/stage-builder";
+import { StageBuilder, ExpertPolicySettings } from "@/components/stage-builder";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { defaultStages } from "@/lib/miniscript/stages";
@@ -175,11 +175,10 @@ function usePaneWidth(key: string, fallback: number, min: number, max: number) {
 
 function DesktopStudio() {
   const { t } = useT();
-  const mode = useStudio((s) => s.mode);
+  const expert = useStudio((s) => s.mode) === "expert";
   const [tab, setTab] = useState("stages");
   const left = usePaneWidth("scriptwerk-left-w", 300, 240, 560);
   const right = usePaneWidth("scriptwerk-right-w", 340, 260, 520);
-  const expert = mode === "expert";
 
   useEffect(() => {
     if (!expert && tab === "ops") setTab("stages");
@@ -202,7 +201,7 @@ function DesktopStudio() {
             </TabsTrigger>
             {expert ? (
               <TabsTrigger value="ops" className="flex-1 px-1.5 text-xs">
-                {t("tabs.ops")}
+                {t("tabs.expert")}
               </TabsTrigger>
             ) : null}
           </TabsList>
@@ -223,12 +222,7 @@ function DesktopStudio() {
               value="ops"
               className="mt-0 min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col"
             >
-              <div className="min-h-0 flex-1 overflow-hidden">
-                <OperatorPalette />
-              </div>
-              <div className="shrink-0 border-t border-border">
-                <NodeInspector />
-              </div>
+              <ExpertPanel pinInspector />
             </TabsContent>
           ) : null}
         </Tabs>
@@ -263,6 +257,7 @@ function DesktopStudio() {
 
 function MobileStudioTabs() {
   const { t } = useT();
+  const expert = useStudio((s) => s.mode) === "expert";
   const selectedStageId = useStudio((s) => s.selectedStageId);
   const [tab, setTab] = useState("tree");
   const prevStage = useRef<string | null>(null);
@@ -271,6 +266,10 @@ function MobileStudioTabs() {
     if (selectedStageId && selectedStageId !== prevStage.current) setTab("tree");
     prevStage.current = selectedStageId;
   }, [selectedStageId]);
+
+  useEffect(() => {
+    if (!expert && tab === "ops") setTab("tree");
+  }, [expert, tab]);
 
   return (
     <Tabs value={tab} onValueChange={setTab} className="flex h-full w-full min-w-0 flex-col">
@@ -285,6 +284,11 @@ function MobileStudioTabs() {
           <TabsTrigger value="keys" className="flex-1 px-2 text-xs">
             {t("tabs.keys")}
           </TabsTrigger>
+          {expert ? (
+            <TabsTrigger value="ops" className="flex-1 px-2 text-xs">
+              {t("tabs.expert")}
+            </TabsTrigger>
+          ) : null}
           <TabsTrigger value="read" className="flex-1 px-2 text-xs">
             {t("tabs.read")}
           </TabsTrigger>
@@ -302,6 +306,11 @@ function MobileStudioTabs() {
       <TabsContent value="keys" className="mt-2 min-h-0 w-full min-w-0 flex-1 overflow-hidden px-3 data-[state=active]:flex data-[state=active]:flex-col">
         <KeyBoard fill />
       </TabsContent>
+      {expert ? (
+        <TabsContent value="ops" className="mt-2 min-h-0 w-full min-w-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col">
+          <ExpertPanel />
+        </TabsContent>
+      ) : null}
       <TabsContent value="read" className="mt-2 min-h-0 w-full min-w-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col">
         <InterpreterPanel />
       </TabsContent>
@@ -338,6 +347,49 @@ function MountWhenVisible({
   return (
     <div ref={ref} data-layout={dataLayout} className={className}>
       {show ? children : null}
+    </div>
+  );
+}
+
+function ExpertPanel({ pinInspector = false }: { pinInspector?: boolean }) {
+  const { t } = useT();
+
+  const settings = (
+    <div className="space-y-3 px-4 pt-4 pb-3">
+      <p className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("tabs.expert")}</p>
+      <p className="text-xs text-pretty text-fg-muted">{t("expert.blurb")}</p>
+      <ExpertPolicySettings />
+      <KeyReuseControls />
+    </div>
+  );
+
+  if (pinInspector) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          {settings}
+          <div className="border-t border-border">
+            <OperatorPalette embedded />
+          </div>
+        </div>
+        <div className="shrink-0 border-t border-border">
+          <NodeInspector />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        {settings}
+        <div className="border-t border-border">
+          <OperatorPalette embedded />
+        </div>
+        <div className="border-t border-border">
+          <NodeInspector />
+        </div>
+      </div>
     </div>
   );
 }
