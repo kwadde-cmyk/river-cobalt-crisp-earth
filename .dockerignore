@@ -14,3 +14,6 @@ dist
 .project_id
 .github_repo
 deploy/.env
+deploy/startos/node_modules
+deploy/startos/javascript
+deploy/startos/*.s9pk

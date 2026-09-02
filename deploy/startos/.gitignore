@@ -5,3 +5,4 @@ node_modules/
 docker-images
 javascript
 ncc-cache
+Dockerfile

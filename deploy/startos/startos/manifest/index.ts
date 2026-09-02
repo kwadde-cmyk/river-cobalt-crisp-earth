@@ -16,7 +16,7 @@ export const manifest = setupManifest({
       source: {
         dockerBuild: {
           workdir: '../..',
-          dockerfile: 'Dockerfile',
+          dockerfile: '../../Dockerfile',
         },
       },
       arch: ['x86_64', 'aarch64'],
