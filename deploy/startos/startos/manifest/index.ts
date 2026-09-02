@@ -29,6 +29,7 @@ export const manifest = setupManifest({
       optional: true,
       metadata: {
         title: 'Bitcoin Core',
+        icon: 'icon.svg',
       },
     },
   },
