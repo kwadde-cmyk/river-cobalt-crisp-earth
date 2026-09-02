@@ -4,6 +4,9 @@ node_modules/
 .env
 .env.*
 deploy/.env
+deploy/startos/javascript
+deploy/startos/*.s9pk
+*.s9pk
 artifacts/
 attachments/
 .vercel/

@@ -5,6 +5,17 @@ export function bitcoindUpstream() {
   return url ? url.replace(/\/+$/, "") : "";
 }
 
+export function bitcoindInfo() {
+  const url = bitcoindUpstream();
+  if (!url) return null;
+  return {
+    configured: true,
+    url,
+    user: String(process.env.BITCOIND_RPC_USER ?? process.env.BITCOIND_RPC_USERNAME ?? "").trim(),
+    source: String(process.env.BITCOIND_RPC_SOURCE ?? "env").trim() || "env",
+  };
+}
+
 /**
  * @param {{ method?: string, params?: unknown[], id?: unknown, auth?: { user?: string, username?: string, pass?: string, password?: string } }} input
  * @returns {Promise<{ status: number, body: string }>}
@@ -43,6 +54,14 @@ export async function forwardBitcoindRpc(input) {
 export function attachBitcoindProxy(middlewares) {
   middlewares.use(async (req, res, next) => {
     const path = String(req.url ?? "").split("?")[0];
+    if (path === "/bitcoind-rpc/info") {
+      const info = bitcoindInfo();
+      res.statusCode = info ? 200 : 404;
+      res.setHeader("content-type", "application/json");
+      res.setHeader("cache-control", "no-store");
+      res.end(JSON.stringify(info ?? { configured: false }));
+      return;
+    }
     if (path !== "/bitcoind-rpc") {
       next();
       return;

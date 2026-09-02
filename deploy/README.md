@@ -2,6 +2,9 @@
 
 Bitcoin-Node muss nicht auf derselben Maschine sein.
 
+StartOS 0.4: Wrapper in [`startos/`](./startos/README.md) (`make x86` / `make arm`).
+
+
 ```bash
 ./deploy/install.sh --probe              # Webserver + Ports prüfen
 ./deploy/install.sh --dry-run            # Port/RPC zeigen, nichts starten

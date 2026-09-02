@@ -1,0 +1,20 @@
+{
+  "name": "scriptwerk-startos",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "rm -rf ./javascript && ncc build startos/index.ts -o ./javascript",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@start9labs/start-sdk": "2.0.9"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "@vercel/ncc": "^0.38.4",
+    "typescript": "^5.9.2"
+  },
+  "overrides": {
+    "@start9labs/start-sdk": "$@start9labs/start-sdk"
+  }
+}

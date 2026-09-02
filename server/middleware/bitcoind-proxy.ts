@@ -1,4 +1,4 @@
-import { bitcoindUpstream, forwardBitcoindRpc } from "../../scripts/bitcoind-proxy.mjs";
+import { bitcoindInfo, bitcoindUpstream, forwardBitcoindRpc } from "../../scripts/bitcoind-proxy.mjs";
 
 interface ProxyEvent {
   url: URL;
@@ -9,6 +9,13 @@ export default async function bitcoindProxyMiddleware(
   event: ProxyEvent,
   next: () => unknown | Promise<unknown>,
 ): Promise<unknown> {
+  if (event.url.pathname === "/bitcoind-rpc/info") {
+    const info = bitcoindInfo();
+    return new Response(JSON.stringify(info ?? { configured: false }), {
+      status: info ? 200 : 404,
+      headers: { "content-type": "application/json", "cache-control": "no-store" },
+    });
+  }
   if (event.url.pathname !== "/bitcoind-rpc") return next();
   if (!bitcoindUpstream()) return next();
 

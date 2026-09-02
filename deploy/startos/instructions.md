@@ -1,22 +1,29 @@
 # Scriptwerk on StartOS 0.4
 
-After install, open **Interfaces → UI**. The studio is a normal website on your
-LAN (`.local` + StartOS TLS).
+After install, open **Interfaces → UI**. The studio is a website on your LAN
+(`.local` + StartOS TLS).
 
-## Bitcoin Core
+Package version **0.1.0**. Sideload or publish to your registry while testing,
+then the same `.s9pk` goes to the community registry (new version number each
+time). Pack **x86 and arm**: `make x86` and `make arm`.
 
-If this package lists **Bitcoin** as a dependency, Scriptwerk talks to Core
-through a same-origin RPC proxy. No bookmarklet.
+## Bitcoin Core (optional)
 
-Otherwise: Bitcoin Core → Interfaces → RPC → copy the `.local` https address,
-trust the Root CA, create RPC credentials, then use **Node-Brücke** in the UI.
+In **Config / Dependencies**, enable **Bitcoin Core**. Scriptwerk then:
+
+1. Creates RPC user **`scriptwerk`** on Core (password stays on the server).
+2. Talks to Core over the internal network — no bookmarklet / Node-Brücke.
+
+If Core is not installed, the UI still works. You can attach a remote node in
+the Node dialog as before.
 
 ## Android / desktop
 
-Open the UI URL in Chrome → Add to Home Screen / Install. Ledger/BitBox USB
-needs a desktop Chromium with WebHID.
+Open the UI URL in Chrome → Add to Home Screen. Ledger/BitBox USB needs a
+desktop Chromium with WebHID — not the StartOS webview.
 
 ## Backup
 
-Policy state lives in the browser (localStorage). Export descriptors/BSMS
-before wiping the service.
+Policy state lives in the **browser** (localStorage), not in the service
+volume. Export descriptors/BSMS before wiping the service. StartOS backup of
+this package does not contain your keys.
