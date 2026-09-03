@@ -1,18 +1,18 @@
 import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '0.1.1:0',
+  version: '0.1.2:0',
   releaseNotes: {
     en_US:
-      'Fix Bitcoin Core RPC auth: Scriptwerk now uses its stored password (env wins over the form) and replaces a GUI-created scriptwerk user Core would otherwise refuse to overwrite.',
+      'RPC user is now a unique scriptwerk_xxxx (Core usernames cannot contain a hyphen). No delete-user task; remove leftover GUI users in Bitcoin Core if you want.',
     de_DE:
-      'RPC-Auth gegen Bitcoin Core: Scriptwerk nutzt das gespeicherte Passwort (Server vor Formular) und ersetzt einen in der Core-GUI angelegten Nutzer scriptwerk, den Core sonst nicht überschreibt.',
+      'RPC-Nutzer ist jetzt eindeutig scriptwerk_xxxx (Core erlaubt kein Minus im Namen). Kein Lösch-Task mehr; alte GUI-User in Bitcoin Core selbst entfernen.',
     es_ES:
-      'Auth RPC: Scriptwerk usa su contraseña guardada (el servidor gana al formulario) y sustituye un usuario scriptwerk creado en la GUI de Core que Core no sobrescribe.',
+      'El usuario RPC pasa a ser único scriptwerk_xxxx. Sin tarea de borrado; borra usuarios de la GUI en Bitcoin Core si quieres.',
     pl_PL:
-      'Auth RPC: Scriptwerk używa zapisanego hasła (serwer przed formularzem) i zastępuje użytkownika scriptwerk z GUI Core, którego Core nie nadpisuje.',
+      'Użytkownik RPC to unikalne scriptwerk_xxxx. Bez zadania usuwania; starych użytkowników GUI usuń w Bitcoin Core.',
     fr_FR:
-      'Auth RPC : Scriptwerk utilise son mot de passe enregistré (le serveur prime sur le formulaire) et remplace un utilisateur scriptwerk créé dans l’interface Core que Core refuse d’écraser.',
+      'L’utilisateur RPC est unique scriptwerk_xxxx. Plus de tâche de suppression ; retirez les comptes GUI dans Bitcoin Core si besoin.',
   },
   migrations: {
     up: async () => {},

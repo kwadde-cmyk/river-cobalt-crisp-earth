@@ -18,7 +18,7 @@ export const generateRpcUserDependent = sdk.Action.withInput(
     username: Value.text({
       name: i18n('Username'),
       required: true,
-      default: 'scriptwerk',
+      default: null,
       patterns: [
         {
           regex: '^[a-zA-Z0-9_]+$',
@@ -49,28 +49,5 @@ export const generateRpcUserDependent = sdk.Action.withInput(
   }),
 )
 
-/** Same id/input as bitcoin-core-startos `delete-rpcauth`. */
-export const deleteRpcAuth = sdk.Action.withInput(
-  'delete-rpcauth',
-  async () => ({
-    name: i18n('Delete RPC Users'),
-    description: i18n('Remove the colliding RPC user so Scriptwerk can create its own'),
-    warning: null,
-    allowedStatuses: 'any',
-    group: null,
-    visibility: 'hidden',
-  }),
-  InputSpec.of({
-    deletedRpcUsers: Value.multiselect({
-      name: i18n('Existing RPC Users'),
-      default: [],
-      values: { scriptwerk: 'scriptwerk' },
-    }),
-  }),
-  async () => {},
-  async () => {},
-)
-
-export const RPC_USER = 'scriptwerk'
 export const RPC_HOST_ID = 'rpc'
 export const RPC_PORT = 8332

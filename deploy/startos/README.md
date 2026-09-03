@@ -3,7 +3,7 @@
 [`@start9labs/start-sdk`](https://github.com/Start9Labs/start-sdk) **2.0.9** package for Scriptwerk.
 
 - id: `scriptwerk`
-- version: `0.1.1` (`startos/versions/current.ts`)
+- version: `0.1.2` (`startos/versions/current.ts`)
 - UI: port **8080**, image built from the repo `Dockerfile`
 - arches: **x86_64** and **aarch64** (`make x86` / `make arm`)
 - optional dependency: **Bitcoin Core** (`bitcoind`) — RPC user `scriptwerk`
@@ -43,13 +43,12 @@ Do not reuse the private-registry test tag; bump `startos/versions/current.ts`.
 
 ## Bitcoin
 
-Optional. Enabling it in the StartOS GUI creates RPC user **scriptwerk** via
-Core’s hidden `generate-rpc-dependent` action and injects URL/user/password
-into the container. The studio auto-connects; no bridge on the same device.
+Optional. Enabling it in the StartOS GUI creates a unique RPC user
+`scriptwerk_xxxx` (Core’s username pattern has no hyphen) via the hidden
+`generate-rpc-dependent` action and injects URL/user/password into the
+container. The studio auto-connects; no bridge on the same device.
 
-Do **not** create user `scriptwerk` in Bitcoin Core’s “Generate RPC User”
-action — Core only stores a hash, so that password cannot be read back.
-Scriptwerk generates the password, writes it to `store.json`, and asks Core
-to create the matching `rpcauth` entry. If `scriptwerk` already exists from
-the GUI, the 0.1.1 package deletes that entry once and recreates it with
-Scriptwerk’s password.
+Do **not** rely on Bitcoin Core’s “Generate RPC User” for Scriptwerk — Core
+only stores a hash. Scriptwerk generates username+password, writes them to
+`store.json`, and asks Core to create that `rpcauth` entry. Leftover GUI
+users can be deleted in Core’s own action.
