@@ -1,12 +1,12 @@
 import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '0.1.4:0',
+  version: '0.1.5:0',
   releaseNotes: {
     en_US:
-      'Node dialog fills StartOS RPC URL, user and password and locks them behind a switch.',
+      'Always creates a unique RPC user scriptwerk_xxxxxxxx with a fresh random password. Node dialog shows those credentials and locks them. Rebuild the full image (not only the wrapper).',
     de_DE:
-      'Node-Dialog übernimmt StartOS-RPC-Adresse, Nutzer und Passwort und sperrt die Felder per Schalter.',
+      'Legt immer einen eindeutigen RPC-Nutzer scriptwerk_xxxxxxxx mit neuem Zufallspasswort an. Node-Dialog zeigt die Daten und sperrt sie. Komplettes Image neu bauen, nicht nur den Wrapper.',
     es_ES:
       'El usuario RPC pasa a ser único scriptwerk_xxxx. Sin tarea de borrado; borra usuarios de la GUI en Bitcoin Core si quieres.',
     pl_PL:

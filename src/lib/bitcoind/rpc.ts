@@ -215,6 +215,7 @@ export async function hostProxyInfo(): Promise<{
   password: string;
   source: string;
   locked: boolean;
+  build: string;
 } | null> {
   if (typeof fetch === "undefined") return null;
   try {
@@ -227,6 +228,7 @@ export async function hostProxyInfo(): Promise<{
       password?: string;
       source?: string;
       locked?: boolean;
+      build?: string;
     };
     if (!body?.configured) return null;
     return {
@@ -236,6 +238,7 @@ export async function hostProxyInfo(): Promise<{
       password: body.password ?? "",
       source: body.source ?? "env",
       locked: Boolean(body.locked),
+      build: body.build ?? "",
     };
   } catch {
     return null;

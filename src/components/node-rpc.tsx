@@ -96,6 +96,7 @@ function NodeDialogBody() {
   const [busy, setBusy] = useState(false);
   const [proxyOn, setProxyOn] = useState(false);
   const [presetUser, setPresetUser] = useState("");
+  const [buildTag, setBuildTag] = useState("");
   const [authLocked, setAuthLocked] = useState(false);
   const [canLock, setCanLock] = useState(false);
   const passRef = useRef<HTMLInputElement>(null);
@@ -116,6 +117,7 @@ function NodeDialogBody() {
       setCanLock(info.locked || Boolean(info.user || info.password));
       setAuthLocked(info.locked || Boolean(info.user || info.password));
       setPresetUser(info.user);
+      setBuildTag(info.build);
       const st = useBitcoind.getState();
       st.patch({
         ...(info.url ? { url: info.url } : {}),
@@ -300,6 +302,7 @@ function NodeDialogBody() {
         {proxyOn ? (
           <p className="text-xs text-ok">
             {presetUser ? t("node.presetStartos", { user: presetUser }) : t("node.proxyOn")}
+            {buildTag ? ` · ${buildTag}` : ""}
           </p>
         ) : null}
 

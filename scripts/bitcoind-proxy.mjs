@@ -17,6 +17,7 @@ export function bitcoindInfo() {
     password: pass,
     source: String(process.env.BITCOIND_RPC_SOURCE ?? "env").trim() || "env",
     locked: Boolean(pass || user),
+    build: String(process.env.SCRIPTWERK_BUILD ?? "").trim(),
   };
 }
 
