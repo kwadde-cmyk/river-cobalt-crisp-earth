@@ -97,6 +97,7 @@ function NodeDialogBody() {
   const [proxyOn, setProxyOn] = useState(false);
   const [presetUser, setPresetUser] = useState("");
   const [authLocked, setAuthLocked] = useState(false);
+  const [canLock, setCanLock] = useState(false);
   const passRef = useRef<HTMLInputElement>(null);
 
   const compiled = compileDescriptorCached(root, keys, reuseKeys);
@@ -112,10 +113,16 @@ function NodeDialogBody() {
     void hostProxyInfo().then((info) => {
       if (!info) return;
       setProxyOn(true);
+      setCanLock(info.locked || Boolean(info.user || info.password));
+      setAuthLocked(info.locked || Boolean(info.user || info.password));
       setPresetUser(info.user);
-      setAuthLocked(Boolean(info.locked));
       const st = useBitcoind.getState();
-      if (info.user) st.patch({ username: info.user, kind: "startos" });
+      st.patch({
+        ...(info.url ? { url: info.url } : {}),
+        ...(info.user ? { username: info.user } : {}),
+        ...(info.password ? { password: info.password } : {}),
+        kind: "startos",
+      });
       if (st.status === "idle") void st.connectLive(useStudio.getState().network);
     });
   }, []);
@@ -136,11 +143,48 @@ function NodeDialogBody() {
         <DialogDescription>{t("node.blurb")}</DialogDescription>
       </DialogHeader>
 
+      {canLock ? (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-2xs font-medium tracking-[0.14em] text-fg-subtle uppercase">{t("node.lock")}</span>
+          <div role="group" aria-label={t("node.lock")} className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              aria-pressed={authLocked}
+              onClick={() => setAuthLocked(true)}
+              className={
+                authLocked
+                  ? "h-9 rounded-full bg-primary px-3 text-xs text-primary-foreground"
+                  : "h-9 rounded-full border border-border px-3 text-xs text-fg-muted hover:bg-muted hover:text-fg"
+              }
+            >
+              {t("node.lockOn")}
+            </button>
+            <button
+              type="button"
+              aria-pressed={!authLocked}
+              onClick={() => setAuthLocked(false)}
+              className={
+                !authLocked
+                  ? "h-9 rounded-full bg-primary px-3 text-xs text-primary-foreground"
+                  : "h-9 rounded-full border border-border px-3 text-xs text-fg-muted hover:bg-muted hover:text-fg"
+              }
+            >
+              {t("node.lockOff")}
+            </button>
+          </div>
+          <p className="text-2xs text-pretty text-fg-muted">{t("node.lockHint")}</p>
+        </div>
+      ) : null}
+
       <form
         className="space-y-3"
         autoComplete="on"
         onSubmit={(e) => {
           e.preventDefault();
+          if (authLocked) {
+            void run(() => connectLive(network));
+            return;
+          }
           const fd = new FormData(e.currentTarget);
           const nextUrl = String(fd.get("url") ?? "").trim();
           const nextUser = String(fd.get("username") ?? "").trim();
@@ -159,6 +203,7 @@ function NodeDialogBody() {
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             <button
               type="button"
+              disabled={authLocked}
               onClick={() => patch({ kind: "core", url: url.includes(".local") ? "127.0.0.1" : url })}
               className={`h-8 rounded-full px-3 text-xs ${
                 !startos ? "bg-muted text-fg" : "border border-border text-fg-muted hover:text-fg"
@@ -168,6 +213,7 @@ function NodeDialogBody() {
             </button>
             <button
               type="button"
+              disabled={authLocked}
               onClick={() => patch({ kind: "startos", url: looksLikeStartos(url) ? url : "" })}
               className={`h-8 rounded-full px-3 text-xs ${
                 startos ? "bg-muted text-fg" : "border border-border text-fg-muted hover:text-fg"
@@ -178,6 +224,7 @@ function NodeDialogBody() {
             {!startos ? (
               <button
                 type="button"
+                disabled={authLocked}
                 onClick={() => patch({ url: "127.0.0.1", kind: "core" })}
                 className={`h-8 rounded-full px-3 text-xs ${
                   url === "127.0.0.1" || url.startsWith("127.0.0.1:")
@@ -194,6 +241,7 @@ function NodeDialogBody() {
             name="url"
             autoComplete="url"
             value={url}
+            disabled={authLocked}
             onChange={(e) => {
               const next = e.target.value;
               patch({
@@ -235,8 +283,9 @@ function NodeDialogBody() {
               name="password"
               type="password"
               autoComplete="current-password"
-              defaultValue={authLocked ? "" : password}
+              value={password}
               disabled={authLocked}
+              onChange={(e) => patch({ password: e.target.value })}
               onInput={(e) => patch({ password: e.currentTarget.value })}
               className="mt-1.5 font-mono text-xs"
             />

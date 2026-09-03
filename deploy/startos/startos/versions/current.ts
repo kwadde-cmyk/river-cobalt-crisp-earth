@@ -1,12 +1,12 @@
 import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '0.1.3:0',
+  version: '0.1.4:0',
   releaseNotes: {
     en_US:
-      'Clears the leftover “delete RPC user” task from 0.1.1. Scriptwerk only creates scriptwerk_xxxx.',
+      'Node dialog fills StartOS RPC URL, user and password and locks them behind a switch.',
     de_DE:
-      'Räumt die hängende Aufgabe „RPC-Nutzer löschen“ aus 0.1.1 weg. Scriptwerk legt nur noch scriptwerk_xxxx an.',
+      'Node-Dialog übernimmt StartOS-RPC-Adresse, Nutzer und Passwort und sperrt die Felder per Schalter.',
     es_ES:
       'El usuario RPC pasa a ser único scriptwerk_xxxx. Sin tarea de borrado; borra usuarios de la GUI en Bitcoin Core si quieres.',
     pl_PL:

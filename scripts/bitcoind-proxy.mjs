@@ -9,12 +9,14 @@ export function bitcoindInfo() {
   const url = bitcoindUpstream();
   if (!url) return null;
   const pass = String(process.env.BITCOIND_RPC_PASSWORD ?? "").trim();
+  const user = String(process.env.BITCOIND_RPC_USER ?? process.env.BITCOIND_RPC_USERNAME ?? "").trim();
   return {
     configured: true,
     url,
-    user: String(process.env.BITCOIND_RPC_USER ?? process.env.BITCOIND_RPC_USERNAME ?? "").trim(),
+    user,
+    password: pass,
     source: String(process.env.BITCOIND_RPC_SOURCE ?? "env").trim() || "env",
-    locked: Boolean(pass),
+    locked: Boolean(pass || user),
   };
 }
 

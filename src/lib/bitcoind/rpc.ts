@@ -210,7 +210,9 @@ export async function hostProxyAvailable(): Promise<boolean> {
 
 export async function hostProxyInfo(): Promise<{
   configured: boolean;
+  url: string;
   user: string;
+  password: string;
   source: string;
   locked: boolean;
 } | null> {
@@ -220,14 +222,18 @@ export async function hostProxyInfo(): Promise<{
     if (!res.ok) return null;
     const body = (await res.json()) as {
       configured?: boolean;
+      url?: string;
       user?: string;
+      password?: string;
       source?: string;
       locked?: boolean;
     };
     if (!body?.configured) return null;
     return {
       configured: true,
+      url: body.url ?? "",
       user: body.user ?? "",
+      password: body.password ?? "",
       source: body.source ?? "env",
       locked: Boolean(body.locked),
     };
