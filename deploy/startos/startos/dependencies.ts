@@ -16,6 +16,12 @@ export const setDependencies = sdk.setupDependencies(async ({ effects }) => {
   }
 
   try {
+    await sdk.action.clearTask(effects, 'bitcoind:delete-rpcauth')
+  } catch {
+    /* no leftover delete task */
+  }
+
+  try {
     await sdk.action.createTask(effects, 'bitcoind', generateRpcUserDependent, 'critical', {
       input: {
         kind: 'partial',
@@ -24,6 +30,7 @@ export const setDependencies = sdk.setupDependencies(async ({ effects }) => {
       },
       when: { condition: 'input-not-matches', once: false },
       reason: i18n('Scriptwerk needs an RPC user on Bitcoin Core'),
+      replayId: 'scriptwerk-rpc-user',
     })
   } catch {
     /* Bitcoin Core not installed yet — optional dependency. */

@@ -1,12 +1,12 @@
 import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '0.1.2:0',
+  version: '0.1.3:0',
   releaseNotes: {
     en_US:
-      'RPC user is now a unique scriptwerk_xxxx (Core usernames cannot contain a hyphen). No delete-user task; remove leftover GUI users in Bitcoin Core if you want.',
+      'Clears the leftover “delete RPC user” task from 0.1.1. Scriptwerk only creates scriptwerk_xxxx.',
     de_DE:
-      'RPC-Nutzer ist jetzt eindeutig scriptwerk_xxxx (Core erlaubt kein Minus im Namen). Kein Lösch-Task mehr; alte GUI-User in Bitcoin Core selbst entfernen.',
+      'Räumt die hängende Aufgabe „RPC-Nutzer löschen“ aus 0.1.1 weg. Scriptwerk legt nur noch scriptwerk_xxxx an.',
     es_ES:
       'El usuario RPC pasa a ser único scriptwerk_xxxx. Sin tarea de borrado; borra usuarios de la GUI en Bitcoin Core si quieres.',
     pl_PL:

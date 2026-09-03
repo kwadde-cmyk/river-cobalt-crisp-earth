@@ -3,7 +3,7 @@
 [`@start9labs/start-sdk`](https://github.com/Start9Labs/start-sdk) **2.0.9** package for Scriptwerk.
 
 - id: `scriptwerk`
-- version: `0.1.2` (`startos/versions/current.ts`)
+- version: `0.1.3` (`startos/versions/current.ts`)
 - UI: port **8080**, image built from the repo `Dockerfile`
 - arches: **x86_64** and **aarch64** (`make x86` / `make arm`)
 - optional dependency: **Bitcoin Core** (`bitcoind`) — RPC user `scriptwerk`
