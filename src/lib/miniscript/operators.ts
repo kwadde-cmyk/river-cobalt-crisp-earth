@@ -34,7 +34,7 @@ export const OPERATORS: OperatorDef[] = [
     label: "pk",
     group: "keys",
     summary: "Signatur eines öffentlichen Schlüssels",
-    hint: "Sofort spendbar mit diesem Key. In Native SegWit die übliche Form.",
+    hint: "Sofort ausgebbar mit diesem Key. In Native SegWit die übliche Form.",
     params: [{ name: "key", kind: "key" }],
   },
   {
@@ -42,7 +42,7 @@ export const OPERATORS: OperatorDef[] = [
     label: "pkh",
     group: "keys",
     summary: "Signatur zum Hash eines Schlüssels",
-    hint: "Spart Platz im Script, Key kommt erst beim Spenden. Oft in Liana-Exporten.",
+    hint: "Spart Platz im Script, Key kommt erst beim Ausgeben. Oft in Liana-Exporten.",
     params: [{ name: "key", kind: "key" }],
   },
   {

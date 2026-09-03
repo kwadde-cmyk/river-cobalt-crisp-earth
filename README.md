@@ -6,14 +6,14 @@ Desktop und Mobil, Deutsch/Englisch. Bitcoin-Node darf auf einer anderen Maschin
 
 ## Features
 
-- **Einfach / Experte** — Umschalter in der Kopfleiste, Einfach ist Standard. Experte blendet den Tab **Expert** ein (Desktop und Mobil): max. relatives Timelock, Struktur, Key-Reuse, Miniscript-Operatoren. Einfach blendet den Tab und die erweiterten Stufen-Optionen aus.
+- **Einfach / Experte** — Umschalter in der Kopfleiste, Einfach ist Standard. Experte blendet den Tab **Experte** ein (Desktop und Mobil): max. relatives Timelock, Struktur, Key-Wiederverwendung, Miniscript-Operatoren. Einfach blendet den Tab und die erweiterten Stufen-Optionen aus.
 - **Stufen** — k-von-n, relatives Timelock (`older` / CSV), Keys die immer mitunterschreiben (`A + (B oder C)`), mehrere Recovery-Stufen
 - **Timelock-Maximum (Experte)** — 65534 (Default, Nunchuk-kompatibel) oder 65535 (Bitcoin-Maximum). Nunchuk lehnt 65535 ab.
 - **Struktur (Experte)** — Spät oder früh zuerst im Descriptor (gleiche Pfade, andere Checksumme)
 - **pk / pkh und 2-von-2 (Experte)** — je Stufe `pk` oder `pkh`; 2-von-2 als `multi` oder `and_v`
 - **Policy-Baum** — Zoom, Stufen antippen hebt den Zweig hervor
 - **Keys** — Name, Fingerprint, A Master / A1 Child getrennt; Import per Text, QR, Datei, USB. Jeder Key zeigt genutzt/unbenutzt; Button **Unbenutzte löschen**
-- **Key-Reuse (Experte)** — Aus: ein Fingerprint = ein Signing-Slot, Childkeys A1, A2 … importieren. An: derselbe xpub mit hochzählender Ableitung in mehreren Stufen
+- **Key-Wiederverwendung (Experte)** — Aus: ein Fingerprint = ein Signing-Slot, Child-Keys A1, A2 … importieren. An: derselbe xpub mit hochzählender Ableitung in mehreren Stufen
 - **Checksummen (Experte)** — Key-Reihenfolge und Ableitung `0/*` vs `<0;1>/*`; Suche nach bekannter Checksumme
 - **Import / Export** — Descriptor, Miniscript, BSMS, Scriptwerk-JSON, BIP-388 für Ledger und BitBox (QR, Datei, USB)
 - **Bitcoin Core** — `getdescriptorinfo` über Host-Proxy oder Node-Brücke. Auf StartOS: optionale Abhängigkeit; Scriptwerk legt RPC-Nutzer `scriptwerk_xxxx` selbst an

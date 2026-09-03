@@ -1,18 +1,18 @@
 import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '0.1.7:0',
+  version: '0.1.8:0',
   releaseNotes: {
     en_US:
-      'Per-key delete, StartOS RPC lock/reset, custom RPC when unlocked, glowing-S icon. USB no longer bulk-fills empty keys. Ledger/BitBox export without QR.',
+      'Glowing-S site favicon. German copy: Ausgabepfad, Descriptor, ableitbar, Key-Wiederverwendung, Child-Keys.',
     de_DE:
-      'Löschen je Key, StartOS-RPC Sperren/Zurücksetzen, eigene RPC-Adresse wenn frei, leuchtendes S als Icon. USB füllt leere Keys nicht mehr. Ledger/BitBox-Export ohne QR.',
+      'Leuchtendes S als Website-Icon. Deutsche Texte: Ausgabepfad, Descriptor, ableitbar, Key-Wiederverwendung, Child-Keys.',
     es_ES:
-      'Borrar cada clave, RPC StartOS con bloqueo/reset, RPC propia al desbloquear, icono S. Sin relleno USB masivo ni QR Ledger/BitBox.',
+      'Favicon S. Textos DE: Ausgabepfad, Descriptor, ableitbar, reutilización de claves.',
     pl_PL:
-      'Usuwanie kluczy, blokada RPC StartOS, własny RPC po odblokowaniu, ikona S. Bez masowego wypełniania USB i QR Ledger/BitBox.',
+      'Favicon S. Niemieckie teksty: Ausgabepfad, Descriptor, ableitbar, ponowne użycie kluczy.',
     fr_FR:
-      'Suppression par clé, verrou RPC StartOS, RPC perso une fois déverrouillé, icône S. Plus de remplissage USB ni de QR Ledger/BitBox.',
+      'Favicon S. Textes DE: Ausgabepfad, Descriptor, ableitbar, réutilisation des clés.',
   },
   migrations: {
     up: async () => {},
