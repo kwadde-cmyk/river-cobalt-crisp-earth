@@ -30,8 +30,8 @@ Desktop und Mobil, Deutsch/Englisch. Bitcoin-Node darf auf einer anderen Maschin
 ## Installation
 
 ```bash
-git clone https://github.com/kwadde-cmyk/river-cobalt-crisp-earth.git
-cd river-cobalt-crisp-earth
+git clone https://github.com/kwadde-cmyk/scriptwerk-startos.git
+cd scriptwerk-startos
 ./deploy/install.sh --probe
 ./deploy/install.sh
 ```
@@ -45,7 +45,7 @@ Ohne Docker: `npm ci` + Node. Ohne beides bricht das Skript ab und nennt den Doc
 ## Aktualisieren
 
 ```bash
-cd river-cobalt-crisp-earth
+cd scriptwerk-startos
 git pull
 SCRIPTWERK_PORT=8081 ./deploy/install.sh
 ```
