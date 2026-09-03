@@ -1,12 +1,12 @@
 import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '0.1.5:0',
+  version: '0.1.6:0',
   releaseNotes: {
     en_US:
-      'Always creates a unique RPC user scriptwerk_xxxxxxxx with a fresh random password. Node dialog shows those credentials and locks them. Rebuild the full image (not only the wrapper).',
+      'Unblocks start: the RPC-user task no longer stays critical after the user already exists. Existing unique credentials are reused; the task is issued only once for new creds.',
     de_DE:
-      'Legt immer einen eindeutigen RPC-Nutzer scriptwerk_xxxxxxxx mit neuem Zufallspasswort an. Node-Dialog zeigt die Daten und sperrt sie. Komplettes Image neu bauen, nicht nur den Wrapper.',
+      'Start wieder möglich: die RPC-User-Aufgabe bleibt nicht mehr als kritisch hängen, wenn der User schon angelegt ist. Vorhandene Zugangsdaten werden weiterverwendet.',
     es_ES:
       'El usuario RPC pasa a ser único scriptwerk_xxxx. Sin tarea de borrado; borra usuarios de la GUI en Bitcoin Core si quieres.',
     pl_PL:
