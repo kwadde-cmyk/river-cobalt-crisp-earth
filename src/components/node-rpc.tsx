@@ -96,6 +96,7 @@ function NodeDialogBody() {
   const [busy, setBusy] = useState(false);
   const [proxyOn, setProxyOn] = useState(false);
   const [presetUser, setPresetUser] = useState("");
+  const [authLocked, setAuthLocked] = useState(false);
   const passRef = useRef<HTMLInputElement>(null);
 
   const compiled = compileDescriptorCached(root, keys, reuseKeys);
@@ -112,8 +113,9 @@ function NodeDialogBody() {
       if (!info) return;
       setProxyOn(true);
       setPresetUser(info.user);
+      setAuthLocked(Boolean(info.locked));
       const st = useBitcoind.getState();
-      if (!st.username && info.user) st.patch({ username: info.user, kind: "startos" });
+      if (info.user) st.patch({ username: info.user, kind: "startos" });
       if (st.status === "idle") void st.connectLive(useStudio.getState().network);
     });
   }, []);
@@ -218,6 +220,7 @@ function NodeDialogBody() {
               name="username"
               autoComplete="username"
               value={username}
+              disabled={authLocked}
               onChange={(e) => patch({ username: e.target.value })}
               onInput={(e) => patch({ username: e.currentTarget.value })}
               placeholder={startos ? "scriptwerk" : "__cookie__"}
@@ -232,7 +235,8 @@ function NodeDialogBody() {
               name="password"
               type="password"
               autoComplete="current-password"
-              defaultValue={password}
+              defaultValue={authLocked ? "" : password}
+              disabled={authLocked}
               onInput={(e) => patch({ password: e.currentTarget.value })}
               className="mt-1.5 font-mono text-xs"
             />

@@ -208,20 +208,36 @@ export async function hostProxyAvailable(): Promise<boolean> {
   return hostProxyMemo;
 }
 
-export async function hostProxyInfo(): Promise<{ configured: boolean; user: string; source: string } | null> {
+export async function hostProxyInfo(): Promise<{
+  configured: boolean;
+  user: string;
+  source: string;
+  locked: boolean;
+} | null> {
   if (typeof fetch === "undefined") return null;
   try {
     const res = await fetch("/bitcoind-rpc/info", { method: "GET", cache: "no-store" });
     if (!res.ok) return null;
-    const body = (await res.json()) as { configured?: boolean; user?: string; source?: string };
+    const body = (await res.json()) as {
+      configured?: boolean;
+      user?: string;
+      source?: string;
+      locked?: boolean;
+    };
     if (!body?.configured) return null;
-    return { configured: true, user: body.user ?? "", source: body.source ?? "env" };
+    return {
+      configured: true,
+      user: body.user ?? "",
+      source: body.source ?? "env",
+      locked: Boolean(body.locked),
+    };
   } catch {
     return null;
   }
 }
 
 async function rpcViaHost(method: string, params: unknown[], config: BitcoindConfig): Promise<unknown> {
+  const info = await hostProxyInfo();
   const auth = splitCookie(config.username, config.password);
   const res = await fetch("/bitcoind-rpc", {
     method: "POST",
@@ -230,7 +246,7 @@ async function rpcViaHost(method: string, params: unknown[], config: BitcoindCon
     body: JSON.stringify({
       method,
       params,
-      auth: { user: auth.username, pass: auth.password },
+      ...(info?.locked ? {} : { auth: { user: auth.username, pass: auth.password } }),
     }),
   });
   if (res.status === 401) throw new Error("node.err.auth");

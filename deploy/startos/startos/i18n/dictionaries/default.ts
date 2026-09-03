@@ -13,6 +13,9 @@ const dict = {
   Password: 9,
   Alphanumeric: 10,
   'Scriptwerk needs an RPC user on Bitcoin Core': 11,
+  'Remove the colliding RPC user so Scriptwerk can create its own': 12,
+  'Delete RPC Users': 13,
+  'Existing RPC Users': 14,
 } as const
 
 export type I18nKey = keyof typeof dict

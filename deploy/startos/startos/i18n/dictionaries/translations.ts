@@ -14,6 +14,9 @@ export default {
     9: 'Passwort',
     10: 'Buchstaben, Ziffern, _ und -',
     11: 'Scriptwerk braucht einen RPC-Nutzer auf Bitcoin Core',
+    12: 'Kollidierenden RPC-Nutzer entfernen, damit Scriptwerk den eigenen anlegen kann',
+    13: 'RPC-Nutzer löschen',
+    14: 'Vorhandene RPC-Nutzer',
   },
   es_ES: {
     0: 'Iniciando Scriptwerk',
@@ -28,6 +31,9 @@ export default {
     9: 'Contraseña',
     10: 'Alfanumérico',
     11: 'Scriptwerk necesita un usuario RPC en Bitcoin Core',
+    12: 'Quitar el usuario RPC en conflicto para que Scriptwerk cree el suyo',
+    13: 'Eliminar usuarios RPC',
+    14: 'Usuarios RPC existentes',
   },
   pl_PL: {
     0: 'Uruchamianie Scriptwerk',
@@ -42,6 +48,9 @@ export default {
     9: 'Hasło',
     10: 'Alfanumeryczne',
     11: 'Scriptwerk potrzebuje użytkownika RPC na Bitcoin Core',
+    12: 'Usuń kolidującego użytkownika RPC, aby Scriptwerk mógł utworzyć własnego',
+    13: 'Usuń użytkowników RPC',
+    14: 'Istniejący użytkownicy RPC',
   },
   fr_FR: {
     0: 'Démarrage de Scriptwerk',
@@ -56,5 +65,8 @@ export default {
     9: 'Mot de passe',
     10: 'Alphanumérique',
     11: 'Scriptwerk a besoin d’un utilisateur RPC sur Bitcoin Core',
+    12: 'Retirer l’utilisateur RPC en conflit pour que Scriptwerk crée le sien',
+    13: 'Supprimer les utilisateurs RPC',
+    14: 'Utilisateurs RPC existants',
   },
 } satisfies Record<string, LangDict>

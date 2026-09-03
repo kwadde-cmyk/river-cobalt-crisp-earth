@@ -8,11 +8,13 @@ export function bitcoindUpstream() {
 export function bitcoindInfo() {
   const url = bitcoindUpstream();
   if (!url) return null;
+  const pass = String(process.env.BITCOIND_RPC_PASSWORD ?? "").trim();
   return {
     configured: true,
     url,
     user: String(process.env.BITCOIND_RPC_USER ?? process.env.BITCOIND_RPC_USERNAME ?? "").trim(),
     source: String(process.env.BITCOIND_RPC_SOURCE ?? "env").trim() || "env",
+    locked: Boolean(pass),
   };
 }
 
@@ -30,8 +32,13 @@ export async function forwardBitcoindRpc(input) {
     return { status: 400, body: JSON.stringify({ error: { code: -32600, message: "method required" } }) };
   }
   const fromForm = input?.auth && typeof input.auth === "object" ? input.auth : null;
-  const user = String(fromForm?.user ?? fromForm?.username ?? process.env.BITCOIND_RPC_USER ?? process.env.BITCOIND_RPC_USERNAME ?? "").trim();
-  const pass = String(fromForm?.pass ?? fromForm?.password ?? process.env.BITCOIND_RPC_PASSWORD ?? "").trim();
+  const envUser = String(process.env.BITCOIND_RPC_USER ?? process.env.BITCOIND_RPC_USERNAME ?? "").trim();
+  const envPass = String(process.env.BITCOIND_RPC_PASSWORD ?? "").trim();
+  const formUser = String(fromForm?.user ?? fromForm?.username ?? "").trim();
+  const formPass = String(fromForm?.pass ?? fromForm?.password ?? "").trim();
+  // Env wins. Browser/localStorage must not override the StartOS-injected password.
+  const user = envUser || formUser;
+  const pass = envPass || formPass;
   const payload = JSON.stringify({
     jsonrpc: "1.0",
     id: input?.id ?? 1,

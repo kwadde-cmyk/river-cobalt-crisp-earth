@@ -1,18 +1,18 @@
 import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '0.1.0:0',
+  version: '0.1.1:0',
   releaseNotes: {
     en_US:
-      'StartOS 0.4 package. Optional Bitcoin Core: GUI enables the dependency, RPC user scriptwerk is created, the studio connects without the bridge.',
+      'Fix Bitcoin Core RPC auth: Scriptwerk now uses its stored password (env wins over the form) and replaces a GUI-created scriptwerk user Core would otherwise refuse to overwrite.',
     de_DE:
-      'StartOS-0.4-Paket. Optionales Bitcoin Core: in der GUI einschalten, RPC-Nutzer scriptwerk wird angelegt, das Studio verbindet ohne Brücke.',
+      'RPC-Auth gegen Bitcoin Core: Scriptwerk nutzt das gespeicherte Passwort (Server vor Formular) und ersetzt einen in der Core-GUI angelegten Nutzer scriptwerk, den Core sonst nicht überschreibt.',
     es_ES:
-      'Paquete StartOS 0.4. Bitcoin Core opcional: actívalo en la GUI, se crea el usuario RPC scriptwerk y el estudio conecta sin puente.',
+      'Auth RPC: Scriptwerk usa su contraseña guardada (el servidor gana al formulario) y sustituye un usuario scriptwerk creado en la GUI de Core que Core no sobrescribe.',
     pl_PL:
-      'Pakiet StartOS 0.4. Opcjonalny Bitcoin Core: włącz w GUI, powstaje użytkownik RPC scriptwerk, studio łączy się bez mostka.',
+      'Auth RPC: Scriptwerk używa zapisanego hasła (serwer przed formularzem) i zastępuje użytkownika scriptwerk z GUI Core, którego Core nie nadpisuje.',
     fr_FR:
-      'Paquet StartOS 0.4. Bitcoin Core optionnel : activez-le dans l’interface, l’utilisateur RPC scriptwerk est créé, le studio se connecte sans pont.',
+      'Auth RPC : Scriptwerk utilise son mot de passe enregistré (le serveur prime sur le formulaire) et remplace un utilisateur scriptwerk créé dans l’interface Core que Core refuse d’écraser.',
   },
   migrations: {
     up: async () => {},
