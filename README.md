@@ -17,13 +17,13 @@ Desktop und Mobil, Deutsch/Englisch. Bitcoin-Node darf auf einer anderen Maschin
 - **Checksummen (Experte)** — Key-Reihenfolge und Ableitung `0/*` vs `<0;1>/*`; Suche nach bekannter Checksumme
 - **Import / Export** — Descriptor, Miniscript, BSMS, Scriptwerk-JSON, BIP-388 für Ledger und BitBox (QR, Datei, USB)
 - **Bitcoin Core** — `getdescriptorinfo` über Host-Proxy oder Node-Brücke. Auf StartOS: optionale Abhängigkeit; Scriptwerk legt RPC-Nutzer `scriptwerk_xxxx` selbst an
-- **Hardware** — Ledger Bitcoin-App 2.1+ und BitBox02 (WebHID), Demo ohne Gerät
+- **Hardware** — Ledger Bitcoin-App und BitBox02 (WebHID), Demo ohne Gerät
 - **Selbst hosten** — ein Skript für Debian / Raspberry Pi (Docker oder Node)
-- **StartOS 0.4** — SDK-Wrapper in `deploy/startos`, Version **0.1.7**, Sideload der `.s9pk`
+- **StartOS** — Wrapper in `deploy/startos`, Sideload der `.s9pk` oder Community-Registry
 
 ## Voraussetzungen
 
-- Debian oder Raspberry Pi OS (oder ein Linux mit Docker **oder** Node 18+)
+- Debian oder Raspberry Pi OS (oder ein Linux mit Docker **oder** Node)
 - Optional: Bitcoin Core im LAN (StartOS, eigener Node). Nicht nötig zum reinen Bauen.
 - Browser: Chrome oder Edge für USB und Kamera
 
@@ -87,7 +87,7 @@ BITCOIND_RPC_PASSWORD='…' \
 
 In der UI: **Node → Brücke**. Bookmarklet/Tab auf der Node offen lassen; Core spricht nur POST. GET-Fehler in der Diagnose sind normal.
 
-StartOS 0.4: Bitcoin Core → Interfaces → RPC-LAN-Adresse (`.local` + https). Root-CA im Browser vertrauen, dann RPC-User anlegen.
+StartOS: Bitcoin Core → Interfaces → RPC-LAN-Adresse (`.local` + https). Root-CA im Browser vertrauen, dann RPC-User anlegen.
 
 ## Browser im LAN (http, kein HTTPS)
 
@@ -112,20 +112,20 @@ npm run dev
 
 UI unter Port 8080. Tests: `node --experimental-strip-types --test src/lib/miniscript/miniscript.test.ts`
 
-## StartOS 0.4
+## StartOS
 
-Wrapper: `deploy/startos` (`@start9labs/start-sdk` 2.0.9). Paket-Version **0.1.7** (`deploy/startos/package.json` und `deploy/startos/startos/versions/current.ts`).
+Wrapper und Community-Doku: [`deploy/startos/README.md`](deploy/startos/README.md). Packen:
 
 ```bash
 cd deploy/startos
-npm ci
+./prepare.sh
 make x86    # scriptwerk_x86_64.s9pk
 make arm    # scriptwerk_aarch64.s9pk
 ```
 
-Dein Server ist x86, `make arm` zusätzlich für Pi-Geräte in derselben Registry.
+In der StartOS-GUI bei Scriptwerk **Bitcoin Core** einschalten. Scriptwerk legt den RPC-Nutzer `scriptwerk_xxxx` selbst an.
 
-In der StartOS-GUI bei Scriptwerk **Bitcoin Core** einschalten. Dann wird RPC-Nutzer **scriptwerk** auf Core angelegt, das Studio verbindet ohne Brücke.
+Community-Registry: öffentliches Repo an [submissions@start9.com](mailto:submissions@start9.com). Tag-Form `v{upstream}_{downstream}` steht in `deploy/startos/UPDATING.md`.
 
 ## Lizenz / Hinweis
 
