@@ -1,62 +1,63 @@
-# Scriptwerk StartOS 0.4 wrapper
+# Scriptwerk
 
-[`@start9labs/start-sdk`](https://github.com/Start9Labs/start-sdk) **2.0.9** package for Scriptwerk.
+This directory is the StartOS package wrapper. The studio image is built from the repository-root Dockerfile. Policy data lives in the visitor browser, not in the service volume.
 
-- id: `scriptwerk`
-- version: `0.1.7` (`startos/versions/current.ts`)
-- UI: port **8080**, image built from the repo `Dockerfile`
-- arches: **x86_64** and **aarch64** (`make x86` / `make arm`)
-- optional dependency: **Bitcoin Core** (`bitcoind`) — RPC user `scriptwerk`
+## Image and Container Runtime
 
-## Pack
+The `main` image is built from the repository-root Dockerfile (`dockerBuild.workdir` is the repo root). The runtime container is Node, listens on the UI port declared in `startos/utils.ts`, and runs `node scripts/host.mjs` as a non-root user. No extra capabilities, nested runtimes, or host devices are required.
 
-Needs Docker and Node 22+. Your server is x86; still build both if others (Pi)
-should install from the same registry.
+## Volume and Data Layout
 
-```bash
-cd deploy/startos
-npm ci
-make x86    # → scriptwerk_x86_64.s9pk
-make arm    # → scriptwerk_aarch64.s9pk
-```
+Volume `main` is mounted at `/data` in the UI container. StartOS writes package metadata there. The only application file on that volume is `store.json` (RPC username and password for the optional Bitcoin Core dependency). Wallet keys, descriptors, and policies are **not** stored on the volume.
 
-## Test on your private registry
+## File Models
 
-1. Registry **Configure** + **Add Administrator** (`start-cli pubkey`).
-2. Add the Web-API URL as marketplace source on the device.
-3. `start-cli -r 'https://…' registry package add scriptwerk_x86_64.s9pk`
-4. Install from that marketplace. Enable Bitcoin Core in Scriptwerk config.
+`store.json` on volume `main` holds `rpcUser` and `rpcPassword`. Scriptwerk generates both when Bitcoin Core is enabled and asks Core to create that `rpcauth` entry. Do not copy a password from Core’s “Generate RPC User” action; Core only stores a hash.
 
-Sideload still works without a registry.
+## Dependencies
 
-## Later: community registry
+Bitcoin Core (`bitcoind`) is optional. When enabled, Scriptwerk expects Core to be running and healthy, creates a unique RPC user `scriptwerk_` plus random suffix (Core usernames cannot contain a hyphen), and talks to Core over the internal StartOS network. No volume from Core is mounted. If Core is off, the studio still runs; the Node dialog can point at another RPC.
 
-Same wrapper, higher version, email [submissions@start9.com](mailto:submissions@start9.com).
-Do not reuse the private-registry test tag; bump `startos/versions/current.ts`.
+## Network Access and Interfaces
 
-## Update
+Interface `ui` is type `ui`, HTTP, internal port from `uiPort`, path `/`. StartOS terminates TLS on the LAN `.local` address. There is no separate API or P2P interface. Outbound RPC to Core uses the injected bridge address, not a public port.
 
-1. Bump `version` in `startos/versions/current.ts` (Emver, e.g. `0.1.1:0`).
-2. Keep a historical file under `startos/versions/` if a migration is needed.
-3. Match `version` in this `package.json`.
-4. Pack both arches, `registry package add` again.
+## Installation and First-Run Flow
 
-## Community registry
+Install from a registry or sideload the `.s9pk`. Start the service and open **Interfaces → UI**. If Bitcoin Core should check descriptors on this device, enable the Bitcoin Core dependency and complete the one-time task that creates the RPC user. Then open the Node dialog: it is locked on those credentials. Unlock only to reach a different node; Reset restores the StartOS values.
 
-Email [submissions@start9.com](mailto:submissions@start9.com) with the public
-GitHub URL (`https://github.com/kwadde-cmyk/river-cobalt-crisp-earth`). Start9
-forks the repo, reviews packaging, and builds. Later versions are PRs on that
-fork. Pack and test both **x86_64** and **aarch64** before asking for
-production (`community`).
+## Actions
 
-## Bitcoin
+None. Scriptwerk exposes no user-facing StartOS actions. RPC-user creation on Core uses Core’s hidden `generate-rpc-dependent` action via a task, not an action on this package.
 
-Optional. Enabling it in the StartOS GUI creates a unique RPC user
-`scriptwerk_xxxx` (Core’s username pattern has no hyphen) via the hidden
-`generate-rpc-dependent` action and injects URL/user/password into the
-container. The studio auto-connects; no bridge on the same device.
+## Tasks
 
-Do **not** rely on Bitcoin Core’s “Generate RPC User” for Scriptwerk — Core
-only stores a hash. Scriptwerk generates username+password, writes them to
-`store.json`, and asks Core to create that `rpcauth` entry. Leftover GUI
-users can be deleted in Core’s own action.
+When Bitcoin Core is newly enabled and Scriptwerk has just minted credentials, one **important** (not critical) task asks Core to create that RPC user. The task is issued once per new credential set. Completing it is required for same-device `getdescriptorinfo`. Dismissing it does not stop the UI.
+
+## Health Checks
+
+The daemon `primary` reports ready when the UI port is listening. There is no application-level probe beyond that. A green health check means the studio process is up, not that Bitcoin Core is reachable.
+
+## Backups and Restore
+
+StartOS backup includes volume `main` only — that is `store.json` (RPC user). Descriptors, key names, xpubs, and policies live in the **browser** (`localStorage`) on the device that opened the UI. Restore brings back the RPC login, not the wallet design. Export descriptor or BSMS from the studio before wiping the browser or the service.
+
+## Limitations and Differences
+
+1. Not a wallet and not a signer. It designs and checks policies; coins never sit in this service.
+2. StartOS backup does not contain keys or policies.
+3. Ledger and BitBox USB need a desktop Chromium with WebHID. The StartOS webview and most phones cannot register hardware.
+4. Same-device Core RPC is injected and locked. A different node works only after unlocking the Node dialog; the host proxy is then skipped so the form URL and password are used.
+5. SegWit `wsh()` miniscript only. Taproot / `tr()` is not implemented.
+6. Relative timelock ceiling is a studio setting; some companion apps reject the Bitcoin maximum.
+7. Deprecated npm warnings during the image build (Ledger helper, chart lib, ESLint) do not change the runtime.
+
+## Quick Reference for AI Consumers
+
+- Package id: `scriptwerk`. Wrapper root: `deploy/startos`.
+- Version lives in `startos/versions/current.ts` (Emver `upstream:downstream`) and `package.json`. Git tag is `v{upstream}_{downstream}`.
+- Image: repo-root `Dockerfile`, both `x86_64` and `aarch64`.
+- Optional dependency: `bitcoind`. File model: `store.json` on volume `main`.
+- UI port: `uiPort` in `startos/utils.ts`. Daemon command: `node scripts/host.mjs`.
+- Pack from this directory after `npm ci`: `make x86` and `make arm`.
+- Prepare script: `./prepare.sh` (npm ci, typecheck, ncc bundle).

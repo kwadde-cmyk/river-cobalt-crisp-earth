@@ -19,13 +19,13 @@ export const manifest = setupManifest({
           dockerfile: '../../Dockerfile',
         },
       },
-      arch: ['x86_64'],
+      arch: ['x86_64', 'aarch64'],
     },
   },
   dependencies: {
     bitcoind: {
       description:
-        'Optional JSON-RPC for getdescriptorinfo. Scriptwerk creates the RPC user scriptwerk.',
+        'Optional JSON-RPC for getdescriptorinfo. Scriptwerk creates a unique scriptwerk_xxxxxxxx RPC user.',
       optional: true,
       metadata: {
         title: 'Bitcoin Core',

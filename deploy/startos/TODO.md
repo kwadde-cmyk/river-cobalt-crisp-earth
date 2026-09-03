@@ -1,9 +1,10 @@
-# StartOS pack checklist
+# Pack checklist
 
-- [ ] `npm ci` in this folder (needs `@start9labs/start-sdk` 2.0.9)
+- [ ] `npm ci` in this folder
+- [ ] `npm run check` and `npm run build`
 - [ ] Docker running
-- [ ] `make x86` or `make arm` → `scriptwerk_<arch>.s9pk`
-- [ ] Sideload on StartOS 0.4, open Interfaces → UI
-- [ ] Optional: wire same-device Bitcoin Core as a typed dependency
-- [ ] Tag `v0.1.0` when publishing
-- [ ] Community registry: submissions@start9.com
+- [ ] `make x86` and `make arm`
+- [ ] Sideload or install from a registry, open Interfaces → UI
+- [ ] Optional: enable Bitcoin Core and complete the RPC-user task
+- [ ] Tag `v{upstream}_{downstream}` before a community submission
+- [ ] Email submissions@start9.com with the public GitHub URL
