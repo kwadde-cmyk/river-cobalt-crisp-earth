@@ -3,19 +3,18 @@
 After install, open **Interfaces → UI**. The studio is a website on your LAN
 (`.local` + StartOS TLS).
 
-Package version **0.1.0**. Sideload or publish to your registry while testing,
-then the same `.s9pk` goes to the community registry (new version number each
-time). Pack **x86 and arm**: `make x86` and `make arm`.
+Package version **0.1.7**. Sideload or publish to your registry while testing.
+Pack **x86 and arm**: `make x86` and `make arm`.
 
 ## Bitcoin Core (optional)
 
 In **Config / Dependencies**, enable **Bitcoin Core**. Scriptwerk then:
 
-1. Creates RPC user **`scriptwerk`** on Core (password stays on the server).
+1. Creates a unique RPC user **`scriptwerk_xxxxxxxx`** on Core (password stays on the server).
 2. Talks to Core over the internal network — no bookmarklet / Node-Brücke.
+3. The Node dialog is **locked** on those credentials. Unlock to point at another RPC; **Reset** restores StartOS values.
 
-If Core is not installed, the UI still works. You can attach a remote node in
-the Node dialog as before.
+If Core is not installed, the UI still works. Enter any RPC URL when unlocked.
 
 ## Android / desktop
 

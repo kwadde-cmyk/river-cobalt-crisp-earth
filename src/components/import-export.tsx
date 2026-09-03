@@ -4,7 +4,6 @@ import {
   compileBip388,
   formatBitboxJson,
   formatLedgerJson,
-  formatPolicyText,
   formatScriptwerkJson,
   type Bip388CompileResult,
 } from "@/lib/miniscript/bip388";
@@ -289,8 +288,6 @@ function DeviceExport({
     return <p className="text-sm text-danger">{result.error}</p>;
   }
   const json = kind === "ledger" ? formatLedgerJson(result.policy) : formatBitboxJson(result.policy);
-  const text = formatPolicyText(result.policy);
-  const qrValue = json.length > 1200 ? text : json;
   const filename = kind === "ledger" ? "scriptwerk-ledger.json" : "scriptwerk-bitbox.json";
 
   return (
@@ -312,7 +309,6 @@ function DeviceExport({
           {formatWarning(w, t)}
         </p>
       ))}
-      <QrPreview value={qrValue} label={kind === "ledger" ? "Ledger" : "BitBox"} compact />
       <p className="text-2xs text-fg-subtle">{t("export.register")}</p>
       <Button variant="secondary" size="sm" onClick={onUsb}>
         <Usb /> {t("export.openUsb")}

@@ -3,7 +3,7 @@
 [`@start9labs/start-sdk`](https://github.com/Start9Labs/start-sdk) **2.0.9** package for Scriptwerk.
 
 - id: `scriptwerk`
-- version: `0.1.6` (`startos/versions/current.ts`)
+- version: `0.1.7` (`startos/versions/current.ts`)
 - UI: port **8080**, image built from the repo `Dockerfile`
 - arches: **x86_64** and **aarch64** (`make x86` / `make arm`)
 - optional dependency: **Bitcoin Core** (`bitcoind`) — RPC user `scriptwerk`
@@ -40,6 +40,14 @@ Do not reuse the private-registry test tag; bump `startos/versions/current.ts`.
 2. Keep a historical file under `startos/versions/` if a migration is needed.
 3. Match `version` in this `package.json`.
 4. Pack both arches, `registry package add` again.
+
+## Community registry
+
+Email [submissions@start9.com](mailto:submissions@start9.com) with the public
+GitHub URL (`https://github.com/kwadde-cmyk/river-cobalt-crisp-earth`). Start9
+forks the repo, reviews packaging, and builds. Later versions are PRs on that
+fork. Pack and test both **x86_64** and **aarch64** before asking for
+production (`community`).
 
 ## Bitcoin
 

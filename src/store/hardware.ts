@@ -34,7 +34,6 @@ interface HardwareState {
   disconnect: () => Promise<void>;
   fetchXpub: (path?: string, display?: boolean) => Promise<HwXpub>;
   fillKey: (keyId: string, path?: string) => Promise<void>;
-  fillEmptyKeys: () => Promise<number>;
   registerPolicy: (policy: Bip388Policy) => Promise<void>;
 }
 
@@ -167,21 +166,6 @@ export const useHardware = create<HardwareState>((set, get) => ({
     if (session && key && !key.note.trim()) {
       useStudio.getState().updateKey(keyId, { note: session.kind === "ledger" ? "Ledger" : "BitBox" });
     }
-  },
-
-  fillEmptyKeys: async () => {
-    const { keys, network } = useStudio.getState();
-    const empty = keys.filter((k) => !k.xpub.trim());
-    let n = 0;
-    for (let i = 0; i < empty.length; i++) {
-      const key = empty[i]!;
-      const path = key.derivation?.trim()
-        ? `m/${key.derivation.replace(/^m\//, "")}`
-        : defaultAccountPath(network, i);
-      await get().fillKey(key.id, path);
-      n++;
-    }
-    return n;
   },
 
   registerPolicy: async (policy) => {

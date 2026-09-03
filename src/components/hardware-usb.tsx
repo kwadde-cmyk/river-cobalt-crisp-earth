@@ -58,7 +58,6 @@ function HardwareDialogBody() {
   const connect = useHardware((s) => s.connect);
   const disconnect = useHardware((s) => s.disconnect);
   const fillKey = useHardware((s) => s.fillKey);
-  const fillEmptyKeys = useHardware((s) => s.fillEmptyKeys);
   const registerPolicy = useHardware((s) => s.registerPolicy);
   const keys = useStudio((s) => s.keys);
   const root = useStudio((s) => s.root);
@@ -73,7 +72,6 @@ function HardwareDialogBody() {
   }, [network]);
 
   const pending = keys.find((k) => k.id === pendingKeyId) ?? null;
-  const emptyCount = keys.filter((k) => !k.xpub.trim()).length;
   const bip = useMemo(
     () => (dialogOpen && root ? compileBip388(root, keys, "Scriptwerk", reuseKeys) : null),
     [dialogOpen, root, keys, reuseKeys],
@@ -195,19 +193,6 @@ function HardwareDialogBody() {
               }
             >
               {t("hw.fetchKey")}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={Boolean(busyAction) || emptyCount === 0}
-              onClick={() =>
-                run(async () => {
-                  const n = await fillEmptyKeys();
-                  toast.success(t("hw.filled", { n }));
-                })
-              }
-            >
-              {t("hw.fillEmpty")}
             </Button>
             <Button
               size="sm"

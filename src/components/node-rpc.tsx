@@ -20,7 +20,7 @@ import { useT } from "@/lib/use-t";
 import { localizeMessage } from "@/lib/i18n";
 import { Loader2, Server } from "lucide-react";
 import { toast } from "sonner";
-import { defaultRpcPort, hostProxyAvailable, hostProxyInfo, isLanIpUrl, looksLikeStartos, normalizeRpcUrl } from "@/lib/bitcoind/rpc";
+import { defaultRpcPort, hostProxyAvailable, hostProxyInfo, isLanIpUrl, looksLikeStartos, normalizeRpcUrl, setUseHostProxy } from "@/lib/bitcoind/rpc";
 
 export function NodeButton() {
   const { t } = useT();
@@ -97,6 +97,7 @@ function NodeDialogBody() {
   const [proxyOn, setProxyOn] = useState(false);
   const [presetUser, setPresetUser] = useState("");
   const [buildTag, setBuildTag] = useState("");
+  const presetRef = useRef({ url: "", user: "", password: "" });
   const [authLocked, setAuthLocked] = useState(false);
   const [canLock, setCanLock] = useState(false);
   const passRef = useRef<HTMLInputElement>(null);
@@ -116,8 +117,10 @@ function NodeDialogBody() {
       setProxyOn(true);
       setCanLock(info.locked || Boolean(info.user || info.password));
       setAuthLocked(info.locked || Boolean(info.user || info.password));
+      setUseHostProxy(true);
       setPresetUser(info.user);
       setBuildTag(info.build);
+      presetRef.current = { url: info.url, user: info.user, password: info.password };
       const st = useBitcoind.getState();
       st.patch({
         ...(info.url ? { url: info.url } : {}),
@@ -152,7 +155,10 @@ function NodeDialogBody() {
             <button
               type="button"
               aria-pressed={authLocked}
-              onClick={() => setAuthLocked(true)}
+              onClick={() => {
+                setAuthLocked(true);
+                setUseHostProxy(true);
+              }}
               className={
                 authLocked
                   ? "h-9 rounded-full bg-primary px-3 text-xs text-primary-foreground"
@@ -164,7 +170,10 @@ function NodeDialogBody() {
             <button
               type="button"
               aria-pressed={!authLocked}
-              onClick={() => setAuthLocked(false)}
+              onClick={() => {
+                setAuthLocked(false);
+                setUseHostProxy(false);
+              }}
               className={
                 !authLocked
                   ? "h-9 rounded-full bg-primary px-3 text-xs text-primary-foreground"
@@ -172,6 +181,23 @@ function NodeDialogBody() {
               }
             >
               {t("node.lockOff")}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const p = presetRef.current;
+                patch({
+                  url: p.url,
+                  username: p.user,
+                  password: p.password,
+                  kind: "startos",
+                });
+                setAuthLocked(true);
+                setUseHostProxy(true);
+              }}
+              className="h-9 rounded-full border border-border px-3 text-xs text-fg-muted hover:bg-muted hover:text-fg"
+            >
+              {t("node.resetPreset")}
             </button>
           </div>
           <p className="text-2xs text-pretty text-fg-muted">{t("node.lockHint")}</p>
@@ -197,47 +223,12 @@ function NodeDialogBody() {
             password: nextPass,
             kind: looksLikeStartos(nextUrl) ? "startos" : kind,
           });
+          setUseHostProxy(false);
           void run(() => connectLive(network));
         }}
       >
         <div>
           <Label htmlFor="node-url">{t("node.url")}</Label>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
-            <button
-              type="button"
-              disabled={authLocked}
-              onClick={() => patch({ kind: "core", url: url.includes(".local") ? "127.0.0.1" : url })}
-              className={`h-8 rounded-full px-3 text-xs ${
-                !startos ? "bg-muted text-fg" : "border border-border text-fg-muted hover:text-fg"
-              }`}
-            >
-              Bitcoin Core
-            </button>
-            <button
-              type="button"
-              disabled={authLocked}
-              onClick={() => patch({ kind: "startos", url: looksLikeStartos(url) ? url : "" })}
-              className={`h-8 rounded-full px-3 text-xs ${
-                startos ? "bg-muted text-fg" : "border border-border text-fg-muted hover:text-fg"
-              }`}
-            >
-              StartOS
-            </button>
-            {!startos ? (
-              <button
-                type="button"
-                disabled={authLocked}
-                onClick={() => patch({ url: "127.0.0.1", kind: "core" })}
-                className={`h-8 rounded-full px-3 text-xs ${
-                  url === "127.0.0.1" || url.startsWith("127.0.0.1:")
-                    ? "bg-muted text-fg"
-                    : "border border-border text-fg-muted hover:text-fg"
-                }`}
-              >
-                {t("node.thisDevice")}
-              </button>
-            ) : null}
-          </div>
           <Input
             id="node-url"
             name="url"
@@ -251,11 +242,7 @@ function NodeDialogBody() {
                 kind: looksLikeStartos(next) ? "startos" : kind,
               });
             }}
-            placeholder={
-              startos
-                ? "https://name.local:57521"
-                : `192.168.1.20  ·  Port ${port}`
-            }
+            placeholder={`https://host:port  ·  ${port}`}
             className="mt-1.5 font-mono text-xs"
           />
           <p className="mt-1 text-2xs text-fg-subtle">

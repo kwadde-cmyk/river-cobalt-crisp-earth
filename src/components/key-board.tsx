@@ -33,7 +33,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useT } from "@/lib/use-t";
-import { KeyRound, Upload, X } from "lucide-react";
+import { KeyRound, Trash2, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 
 export function KeyBoard({ fill = false }: { fill?: boolean }) {
@@ -132,6 +132,15 @@ export function KeyBoard({ fill = false }: { fill?: boolean }) {
                         (aliases.get(k.name) ?? []).filter((a) => a.account != null).length,
                       )
                 }
+                onDelete={() => {
+                  const kids = k.children.filter((c) => c.xpub.trim()).length;
+                  if (kids && !window.confirm(t("keys.deleteChildren", { n: String(kids) }))) return;
+                  useStudio.getState().removeKey(k.id);
+                  if (expandedId === k.id || detailsId === k.id) {
+                    setExpandedId(null);
+                    setDetailsId(null);
+                  }
+                }}
                 onToggle={() => {
                   if (expandedId === k.id) {
                     setDetailsId(k.id);
@@ -159,6 +168,7 @@ function KeyTile({
   childPresent,
   childTotal,
   onToggle,
+  onDelete,
 }: {
   entry: KeyEntry;
   expanded: boolean;
@@ -169,6 +179,7 @@ function KeyTile({
   childPresent: number;
   childTotal: number;
   onToggle: () => void;
+  onDelete: () => void;
 }) {
   const { t } = useT();
   const filled = keyIsFilled(entry);
@@ -183,23 +194,34 @@ function KeyTile({
 
   if (!expanded) {
     return (
-      <button
-        type="button"
-        data-key-tile={entry.name}
-        data-need-action={needsAction ? "true" : undefined}
-        aria-expanded={false}
-        aria-label={needsAction ? t("keys.needAction", { name: entry.name }) : undefined}
-        onClick={onToggle}
-        className={`flex min-h-10 w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-left text-xs transition-colors duration-150 ${tileClass}`}
-      >
-        <span className="min-w-0 flex-1 truncate">{name || t("keys.unnamed")}</span>
-        <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-2xs ${used ? "bg-muted text-fg-subtle" : "text-fg-muted"}`}>
-          {used ? t("keys.inUse") : t("keys.idle")}
-        </span>
-        <span className="shrink-0 font-mono text-2xs text-fg-muted">{fp || "—"}</span>
-        <span className={`shrink-0 font-mono text-2xs ${needsAction ? "text-danger" : "text-fg-subtle"}`}>{role}</span>
-        {childTotal > 0 ? <NestedKeyStack present={childPresent} total={childTotal} compact /> : null}
-      </button>
+      <div className={`flex min-h-10 w-full items-stretch gap-1 rounded-md border ${tileClass}`}>
+        <button
+          type="button"
+          data-key-tile={entry.name}
+          data-need-action={needsAction ? "true" : undefined}
+          aria-expanded={false}
+          aria-label={needsAction ? t("keys.needAction", { name: entry.name }) : undefined}
+          onClick={onToggle}
+          className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-1.5 text-left text-xs"
+        >
+          <span className="min-w-0 flex-1 truncate">{name || t("keys.unnamed")}</span>
+          <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-2xs ${used ? "bg-muted text-fg-subtle" : "text-fg-muted"}`}>
+            {used ? t("keys.inUse") : t("keys.idle")}
+          </span>
+          <span className="shrink-0 font-mono text-2xs text-fg-muted">{fp || "—"}</span>
+          <span className={`shrink-0 font-mono text-2xs ${needsAction ? "text-danger" : "text-fg-subtle"}`}>{role}</span>
+          {childTotal > 0 ? <NestedKeyStack present={childPresent} total={childTotal} compact /> : null}
+        </button>
+        <button
+          type="button"
+          aria-label={t("keys.delete")}
+          title={t("keys.delete")}
+          onClick={onDelete}
+          className="shrink-0 px-2 text-fg-muted hover:text-danger"
+        >
+          <Trash2 className="size-3.5" />
+        </button>
+      </div>
     );
   }
 
@@ -207,7 +229,7 @@ function KeyTile({
     <div
       data-key-tile={entry.name}
       data-need-action={needsAction ? "true" : undefined}
-      className={`w-full rounded-xl border p-3 text-left transition-colors duration-150 ${tileClass}`}
+      className={`relative w-full rounded-xl border p-3 text-left transition-colors duration-150 ${tileClass}`}
     >
       <button
         type="button"
@@ -222,6 +244,15 @@ function KeyTile({
         </span>
         <span className={`shrink-0 font-mono text-2xs ${needsAction ? "text-danger" : "text-fg-subtle"}`}>{role}</span>
         {childTotal > 0 ? <NestedKeyStack present={childPresent} total={childTotal} compact /> : null}
+      </button>
+      <button
+        type="button"
+        aria-label={t("keys.delete")}
+        title={t("keys.delete")}
+        onClick={onDelete}
+        className="absolute top-2.5 right-2.5 text-fg-muted hover:text-danger"
+      >
+        <Trash2 className="size-3.5" />
       </button>
       <p className="mt-0.5 font-mono text-2xs text-fg-muted">{fp || "—"}</p>
       <ul className="mt-2 space-y-1.5">

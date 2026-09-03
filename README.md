@@ -19,7 +19,7 @@ Desktop und Mobil, Deutsch/Englisch. Bitcoin-Node darf auf einer anderen Maschin
 - **Bitcoin Core** — `getdescriptorinfo` über Host-Proxy oder Node-Brücke. Auf StartOS: optionale Abhängigkeit; Scriptwerk legt RPC-Nutzer `scriptwerk_xxxx` selbst an
 - **Hardware** — Ledger Bitcoin-App 2.1+ und BitBox02 (WebHID), Demo ohne Gerät
 - **Selbst hosten** — ein Skript für Debian / Raspberry Pi (Docker oder Node)
-- **StartOS 0.4** — SDK-Wrapper in `deploy/startos`, Version **0.1.6**, Sideload der `.s9pk`
+- **StartOS 0.4** — SDK-Wrapper in `deploy/startos`, Version **0.1.7**, Sideload der `.s9pk`
 
 ## Voraussetzungen
 
@@ -114,7 +114,7 @@ UI unter Port 8080. Tests: `node --experimental-strip-types --test src/lib/minis
 
 ## StartOS 0.4
 
-Wrapper: `deploy/startos` (`@start9labs/start-sdk` 2.0.9). Paket-Version **0.1.6** (`deploy/startos/package.json` und `deploy/startos/startos/versions/current.ts`).
+Wrapper: `deploy/startos` (`@start9labs/start-sdk` 2.0.9). Paket-Version **0.1.7** (`deploy/startos/package.json` und `deploy/startos/startos/versions/current.ts`).
 
 ```bash
 cd deploy/startos

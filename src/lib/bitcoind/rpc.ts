@@ -195,8 +195,15 @@ export async function jsonRpc(
 }
 
 let hostProxyMemo: boolean | null = null;
+let useHostProxyFlag = true;
+
+/** When false, skip the same-origin proxy so form URL/user/password are used. */
+export function setUseHostProxy(on: boolean) {
+  useHostProxyFlag = on;
+}
 
 export async function hostProxyAvailable(): Promise<boolean> {
+  if (!useHostProxyFlag) return false;
   if (typeof fetch === "undefined") return false;
   if (hostProxyMemo != null) return hostProxyMemo;
   try {
