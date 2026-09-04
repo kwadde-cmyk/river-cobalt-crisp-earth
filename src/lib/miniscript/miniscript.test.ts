@@ -12,13 +12,17 @@ import { explainPolicy } from "./explain.ts";
 import {
   applyKeyMaterial,
   attachChildOrReplace,
+  applyKeyNames,
   buildKeyTree,
+  collapseAliasKeys,
   groupKeysByFingerprint,
   emptyKey,
   extractKeysFromTree,
   flattenKeysForLookup,
   formatBip32Path,
+  formatExportWithKeys,
   formatKeyList,
+  peelKeysFromText,
   keyHeadline,
   keyNeedsAction,
   keyRoleLabel,
@@ -184,6 +188,59 @@ describe("keys", () => {
     const quoted = parseKeyList(`B "Coldcard" [aabbccdd/48'/0'/0'/2']${XPUB}/<0;1>/*`);
     assert.equal(quoted?.[0]?.name, "B");
     assert.equal(quoted?.[0]?.note, "Coldcard");
+  });
+
+  it("roundtrips names through descriptor file comments", () => {
+    const keys = [
+      { ...emptyKey("A"), note: "NANO-S", fingerprint: "deadbeef", derivation: "48'/0'/0'/2'", xpub: XPUB },
+    ];
+    const file = formatExportWithKeys(`wsh(pk(${XPUB}))`, keys);
+    assert.match(file, /NANO-S/);
+    const peeled = peelKeysFromText(file);
+    assert.equal(peeled.keys[0]?.note, "NANO-S");
+    const parsed = parseAny(file);
+    const extracted = extractKeysFromTree(parsed.node, peeled.keys);
+    const named = applyKeyNames(extracted.keys, peeled.keys);
+    assert.equal(named.find((k) => k.xpub === XPUB)?.note, "NANO-S");
+  });
+
+  it("keeps the master display name when a child xpub is listed first", () => {
+    const childXpub =
+      "xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsfTFUHCdrfp1bgwQ9xv5ski8PX9rL2dZXvgGDnw";
+    const folded = collapseAliasKeys(
+      [
+        {
+          ...emptyKey("A1"),
+          fingerprint: "deadbeef",
+          derivation: "48'/0'/1'/2'",
+          xpub: childXpub,
+        },
+        {
+          ...emptyKey("A"),
+          note: "Alice",
+          fingerprint: "deadbeef",
+          derivation: "48'/0'/0'/2'",
+          xpub: XPUB,
+        },
+      ],
+      ["A", "A1"],
+    );
+    const master = folded.find((k) => k.name === "A");
+    assert.equal(master?.note, "Alice");
+    assert.equal(master?.xpub, XPUB);
+    assert.equal(master?.children[0]?.xpub, childXpub);
+  });
+
+  it("reads a display name from a single-key json file", () => {
+    const result = applyKeyMaterial(
+      emptyKey("A"),
+      JSON.stringify({ name: "NANO-S", fingerprint: "aabbccdd", derivation: "48'/0'/0'/2'", xpub: XPUB }),
+    );
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.key.note, "NANO-S");
+    assert.equal(result.key.xpub, XPUB);
+    assert.equal(result.key.name, "A");
   });
 
   it("applies origin material onto an existing alias", () => {

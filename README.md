@@ -15,7 +15,7 @@ Desktop und Mobil, Deutsch/Englisch. Bitcoin-Node darf auf einer anderen Maschin
 - **Keys** — Name, Fingerprint, A Master / A1 Child getrennt; Import per Text, QR, Datei, USB. Jeder Key zeigt genutzt/unbenutzt; Button **Unbenutzte löschen**
 - **Key-Wiederverwendung (Experte)** — Aus: ein Fingerprint = ein Signing-Slot, Child-Keys A1, A2 … importieren. An: derselbe xpub mit hochzählender Ableitung in mehreren Stufen
 - **Checksummen (Experte)** — Key-Reihenfolge und Ableitung `0/*` vs `<0;1>/*`; Suche nach bekannter Checksumme
-- **Import / Export** — Descriptor, Miniscript, BSMS, Scriptwerk-JSON, BIP-388 für Ledger und BitBox (QR, Datei, USB)
+- **Import / Export** — Descriptor, Miniscript, BSMS, Scriptwerk-JSON, `scriptwerk.keys.txt` (Namen), BIP-388 für Ledger und BitBox (QR, Datei, USB). Dateien tragen Key-Namen mit; QR bleibt ohne Kommentare.
 - **Bitcoin Core** — `getdescriptorinfo` über Host-Proxy oder Node-Brücke. Auf StartOS: optionale Abhängigkeit; Scriptwerk legt RPC-Nutzer `scriptwerk_xxxx` selbst an
 - **Hardware** — Ledger Bitcoin-App und BitBox02 (WebHID), Demo ohne Gerät
 - **Selbst hosten** — ein Skript für Debian / Raspberry Pi (Docker oder Node)

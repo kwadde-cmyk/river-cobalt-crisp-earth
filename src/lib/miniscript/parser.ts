@@ -29,7 +29,7 @@ export interface ParseResult {
 }
 
 export function parseAny(input: string): ParseResult {
-  const trimmed = input.trim();
+  const trimmed = stripScriptComments(input.trim());
   if (!trimmed) throw new Error("Leere Eingabe.");
 
   const bsms = extractFromBsms(trimmed);
@@ -57,6 +57,14 @@ export function parseAny(input: string): ParseResult {
 
   const node = parseExpression(inner, 0).node;
   return { node, wrapper, checksum, rawInner: inner };
+}
+
+function stripScriptComments(s: string): string {
+  return s
+    .split(/\r?\n/)
+    .filter((l) => !l.trim().startsWith("#"))
+    .join("\n")
+    .trim();
 }
 
 function extractFromBsms(s: string): string | null {

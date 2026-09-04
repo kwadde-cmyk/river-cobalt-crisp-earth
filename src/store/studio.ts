@@ -14,7 +14,10 @@ import {
   orderMasterNames,
   parseChildKey,
   parseKeyList,
+  peelKeysFromText,
+  applyKeyNames,
   relabelKeysFromA,
+  sanitizeKeyNote,
   type KeyEntry,
 } from "@/lib/miniscript/keys";
 import { buildOperator, wrapNode, type BuildParams } from "@/lib/miniscript/operators";
@@ -513,19 +516,22 @@ export const useStudio = create<StudioState>()(
                 .map((k) => [k.xpub.match(/(?:xpub|tpub|ypub|zpub|vpub|Ypub|Zpub|Vpub)[1-9A-HJ-NP-Za-km-z]+/)?.[0] ?? k.xpub, k]),
             );
             const byName = new Map(flattenKeysForLookup(bundle.keys).map((k) => [k.name, k]));
-            const keys = extracted.keys.map((k) => {
-              const xid = k.xpub.match(/(?:xpub|tpub|ypub|zpub|vpub|Ypub|Zpub|Vpub)[1-9A-HJ-NP-Za-km-z]+/)?.[0] ?? k.xpub;
-              const hit = (xid ? byXpub.get(xid) : undefined) ?? byName.get(k.name);
-              if (!hit) return k;
-              return {
-                ...k,
-                note: hit.note || k.note,
-                children: hit.children.length ? hit.children : k.children,
-                fingerprint: k.fingerprint || hit.fingerprint,
-                derivation: k.derivation || hit.derivation,
-                xpub: k.xpub || hit.xpub,
-              };
-            });
+            const keys = applyKeyNames(
+              extracted.keys.map((k) => {
+                const xid = k.xpub.match(/(?:xpub|tpub|ypub|zpub|vpub|Ypub|Zpub|Vpub)[1-9A-HJ-NP-Za-km-z]+/)?.[0] ?? k.xpub;
+                const hit = (xid ? byXpub.get(xid) : undefined) ?? byName.get(k.name);
+                if (!hit) return k;
+                return {
+                  ...k,
+                  note: hit.note || k.note,
+                  children: hit.children.length ? hit.children : k.children,
+                  fingerprint: k.fingerprint || hit.fingerprint,
+                  derivation: k.derivation || hit.derivation,
+                  xpub: k.xpub || hit.xpub,
+                };
+              }),
+              bundle.keys,
+            );
             const adopted = adoptImportedTree(extracted.node, keys, { preserveGroups: true });
             mutate({
               ...adopted,
@@ -539,11 +545,12 @@ export const useStudio = create<StudioState>()(
           }
           return;
         }
-        const wallet = parseWalletPolicy(text);
+        const peeled = peelKeysFromText(text);
+        const wallet = parseWalletPolicy(peeled.body);
         if (wallet) {
           try {
-            const extracted = materializeWalletPolicy(wallet, get().keys);
-            mutate(adoptImportedTree(extracted.node, extracted.keys));
+            const extracted = materializeWalletPolicy(wallet, [...get().keys, ...peeled.keys]);
+            mutate(adoptImportedTree(extracted.node, applyKeyNames(extracted.keys, peeled.keys)));
           } catch (e) {
             set({
               importError: e instanceof Error ? e.message : t(get().locale, "import.fail"),
@@ -551,15 +558,15 @@ export const useStudio = create<StudioState>()(
           }
           return;
         }
-        const keyList = parseKeyList(text);
+        const keyList = parseKeyList(peeled.body) ?? (peeled.keys.length ? peeled.keys : null);
         if (keyList) {
           mutate({ keys: mergeKeyLists(get().keys, keyList), importError: null });
           return;
         }
         try {
-          const parsed = parseAny(text);
-          const extracted = extractKeysFromTree(parsed.node, get().keys);
-          mutate(adoptImportedTree(extracted.node, extracted.keys));
+          const parsed = parseAny(peeled.body);
+          const extracted = extractKeysFromTree(parsed.node, [...get().keys, ...peeled.keys]);
+          mutate(adoptImportedTree(extracted.node, applyKeyNames(extracted.keys, peeled.keys)));
         } catch (e) {
           set({
             importError: e instanceof Error ? e.message : t(get().locale, "import.fail"),
@@ -577,6 +584,83 @@ export const useStudio = create<StudioState>()(
       importKeyText: (id, text) => {
         const target = get().keys.find((k) => k.id === id);
         if (!target) return t(get().locale, "err.noKey");
+        const bundle = parseScriptwerkBundle(text);
+        if (bundle) {
+          const hit =
+            bundle.keys.find((k) => k.name === target.name) ??
+            bundle.keys.find((k) => k.xpub && target.xpub && k.xpub === target.xpub) ??
+            bundle.keys.find(
+              (k) =>
+                k.fingerprint &&
+                target.fingerprint &&
+                k.fingerprint.toLowerCase() === target.fingerprint.toLowerCase(),
+            ) ??
+            bundle.keys.find((k) => k.xpub) ??
+            bundle.keys[0];
+          if (!hit) return t(get().locale, "err.noXpub");
+          const origin = hit.xpub.includes("[")
+            ? hit.xpub
+            : `[${hit.fingerprint || "00000000"}/${(hit.derivation || "").replace(/^m\//, "")}]${hit.xpub}`;
+          const result = applyKeyMaterial(target, origin);
+          if (!result.ok) return localizeMessage(get().locale, result.error);
+          mutate({
+            keys: get().keys.map((k) =>
+              k.id === id
+                ? {
+                    ...result.key,
+                    note: hit.note || result.key.note,
+                    children: hit.children.length ? hit.children : result.key.children,
+                  }
+                : k,
+            ),
+            importError: null,
+          });
+          return null;
+        }
+        const peeled = peelKeysFromText(text);
+        const list = parseKeyList(text) ?? (peeled.keys.length ? peeled.keys : null);
+        if (list?.length) {
+          const hit =
+            list.find((k) => k.name === target.name) ??
+            list.find((k) => k.xpub && target.xpub && k.xpub === target.xpub) ??
+            list.find(
+              (k) =>
+                k.fingerprint &&
+                target.fingerprint &&
+                k.fingerprint.toLowerCase() === target.fingerprint.toLowerCase(),
+            ) ??
+            list[0]!;
+          const origin = hit.xpub.includes("[")
+            ? hit.xpub
+            : `[${hit.fingerprint || "00000000"}/${(hit.derivation || "").replace(/^m\//, "")}]${hit.xpub}`;
+          const result = applyKeyMaterial(target, origin);
+          if (!result.ok) return localizeMessage(get().locale, result.error);
+          mutate({
+            keys: get().keys.map((k) =>
+              k.id === id ? { ...result.key, note: hit.note || result.key.note } : k,
+            ),
+            importError: null,
+          });
+          return null;
+        }
+        const wallet = parseWalletPolicy(text);
+        if (wallet?.keys.length) {
+          const hit =
+            wallet.keys.find((k) => k.name === target.name) ??
+            wallet.keys.find((k) => k.label && sanitizeKeyNote(k.label) === target.note) ??
+            wallet.keys.find((k) => k.xpub && target.xpub && k.xpub === target.xpub) ??
+            wallet.keys[0]!;
+          const origin = hit.origin || hit.xpub;
+          const result = applyKeyMaterial(target, origin);
+          if (!result.ok) return localizeMessage(get().locale, result.error);
+          const note =
+            hit.label && !/^[A-Z]$|^K\d+$/.test(hit.label) ? hit.label : result.key.note;
+          mutate({
+            keys: get().keys.map((k) => (k.id === id ? { ...result.key, note } : k)),
+            importError: null,
+          });
+          return null;
+        }
         const result = applyKeyMaterial(target, text);
         if (!result.ok) return localizeMessage(get().locale, result.error);
         mutate({

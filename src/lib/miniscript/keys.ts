@@ -215,6 +215,7 @@ export interface ParsedKeyExpr {
   multipath: string;
   childPath: string;
   raw: string;
+  note?: string;
 }
 
 const XPUB_BODY = /^(xpub|tpub|ypub|zpub|vpub|Ypub|Zpub|Vpub)[1-9A-HJ-NP-Za-km-z]+/;
@@ -370,18 +371,126 @@ function splitNamedKeyLine(line: string): { name?: string; note: string; expr: s
   return { name: named[1], note, expr: rest };
 }
 
+function originExpr(k: {
+  fingerprint?: string;
+  derivation?: string;
+  xpub: string;
+  childPath?: string;
+}): string {
+  if (k.xpub.includes("[")) return k.xpub;
+  const path = (k.derivation || "").replace(/^m\//, "");
+  const tail = k.childPath ? `/${k.childPath.replace(/^\//, "")}` : "";
+  return `[${k.fingerprint || "00000000"}/${path}]${k.xpub}${tail}`;
+}
+
+function formatOneKeyLine(alias: string, note: string, expr: string): string {
+  const label = note.trim() && note.trim() !== alias ? note.trim() : "";
+  return label ? `${alias} "${label}" ${expr}` : `${alias} ${expr}`;
+}
+
 export function formatKeyList(keys: KeyEntry[]): string {
-  return keys
-    .filter((k) => k.xpub.trim() || k.fingerprint)
-    .map((k) => {
-      const alias = k.name;
-      const label = k.note.trim() && k.note.trim() !== alias ? k.note.trim() : "";
-      const expr = k.xpub.includes("[")
-        ? k.xpub
-        : `[${k.fingerprint || "00000000"}/${(k.derivation || "").replace(/^m\//, "")}]${k.xpub}${k.childPath ? `/${k.childPath.replace(/^\//, "")}` : ""}`;
-      return label ? `${alias} "${label}" ${expr}` : `${alias} ${expr}`;
-    })
-    .join("\n");
+  const lines: string[] = [];
+  for (const k of keys) {
+    if (!k.xpub.trim() && !k.fingerprint) continue;
+    lines.push(formatOneKeyLine(k.name, k.note, originExpr(k)));
+    for (const c of k.children) {
+      if (!c.xpub.trim()) continue;
+      const acc = parseAccountIndex(c.path);
+      const alias = acc != null && acc > 0 ? `${k.name}${acc}` : `${k.name}_c`;
+      lines.push(
+        formatOneKeyLine(
+          alias,
+          k.note,
+          originExpr({
+            fingerprint: c.fingerprint || k.fingerprint,
+            derivation: c.path,
+            xpub: c.xpub,
+          }),
+        ),
+      );
+    }
+  }
+  return lines.join("\n");
+}
+
+/** Prefix policy/descriptor with named key lines so a file round-trips display names. */
+export function formatExportWithKeys(body: string, keys: KeyEntry[]): string {
+  const list = formatKeyList(keys);
+  if (!list.trim()) return body;
+  const comments = ["# Scriptwerk-keys", ...list.split("\n").map((l) => `# ${l}`)];
+  return `${comments.join("\n")}\n${body}`;
+}
+
+export function peelKeysFromText(text: string): { body: string; keys: KeyEntry[] } {
+  const lines = text.split(/\r?\n/);
+  const keyLines: string[] = [];
+  const body: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const unhash = trimmed.replace(/^#\s?/, "");
+    if (!unhash) {
+      body.push(line);
+      continue;
+    }
+    if (/^scriptwerk-keys$/i.test(unhash)) continue;
+    if (
+      /^BSMS\b/i.test(unhash) ||
+      /^(wsh|sh|tr)\(/i.test(unhash) ||
+      /^\/\d/.test(unhash) ||
+      unhash.startsWith("{") ||
+      /^(name|wallet|BIP388)\b/i.test(unhash)
+    ) {
+      body.push(line);
+      continue;
+    }
+    const named = splitNamedKeyLine(unhash);
+    if (named && parseKeyExpr(named.expr).kind !== "alias") {
+      keyLines.push(unhash);
+      continue;
+    }
+    body.push(line);
+  }
+  const keys = keyLines.length ? parseKeyList(keyLines.join("\n")) ?? [] : [];
+  return { body: body.join("\n"), keys };
+}
+
+export function applyKeyNames(keys: KeyEntry[], named: KeyEntry[]): KeyEntry[] {
+  if (!named.length) return keys;
+  const byXpub = new Map(
+    named.filter((k) => k.xpub).map((k) => [xpubId(k.xpub), k] as const),
+  );
+  const byFp = new Map<string, KeyEntry>();
+  for (const k of named) {
+    const fp = formatFingerprint(k.fingerprint);
+    if (fp && !byFp.has(fp)) byFp.set(fp, k);
+  }
+  const byName = new Map(named.map((k) => [k.name, k]));
+  return keys.map((k) => {
+    const hit =
+      (k.xpub ? byXpub.get(xpubId(k.xpub)) : undefined) ??
+      (formatFingerprint(k.fingerprint) ? byFp.get(formatFingerprint(k.fingerprint)) : undefined) ??
+      byName.get(k.name);
+    if (!hit) return k;
+    const note = sanitizeKeyNote(hit.note) || k.note;
+    const children = k.children.length
+      ? k.children.map((c) => {
+          const childHit = c.xpub ? byXpub.get(xpubId(c.xpub)) : undefined;
+          return {
+            ...c,
+            note: sanitizeKeyNote(childHit?.note || c.note) || c.note,
+          };
+        })
+      : hit.children;
+    return { ...k, note, children };
+  });
+}
+
+function pickNote(...notes: string[]): string {
+  for (const n of notes) {
+    const s = sanitizeKeyNote(n);
+    if (s) return s;
+  }
+  return "";
 }
 
 function xpubId(s: string): string {
@@ -602,17 +711,20 @@ export function groupKeysByFingerprint(keys: KeyEntry[]): {
     for (const k of sorted) {
       const hit = uniqueXpub.find((x) => x.xpub && k.xpub && x.xpub === k.xpub);
       if (hit) {
+        hit.note = pickNote(hit.note, k.note);
         rename.set(k.name, hit.name);
         continue;
       }
       uniqueXpub.push(k);
     }
-    const master = uniqueXpub[0]!;
+    const master =
+      uniqueXpub.find((k) => (parseAccountIndex(k.derivation) ?? aliasAccountIndex(k.name) ?? 0) === 0) ??
+      uniqueXpub[0]!;
+    const rest = uniqueXpub.filter((k) => k !== master);
     const children = [...master.children];
-    for (let i = 1; i < uniqueXpub.length; i++) {
-      const extra = uniqueXpub[i]!;
+    for (const extra of rest) {
       const acc = parseAccountIndex(extra.derivation);
-      const alias = acc != null && acc > 0 ? `${master.name}${acc}` : `${master.name}${i}`;
+      const alias = acc != null && acc > 0 ? `${master.name}${acc}` : `${master.name}${rest.indexOf(extra) + 1}`;
       if (!children.some((c) => c.xpub === extra.xpub)) {
         children.push({
           id: uid("ck"),
@@ -624,7 +736,7 @@ export function groupKeysByFingerprint(keys: KeyEntry[]): {
       }
       rename.set(extra.name, alias);
     }
-    out.push({ ...master, children });
+    out.push({ ...master, note: pickNote(master.note, ...rest.map((k) => k.note)), children });
   }
   return { keys: out, rename };
 }
@@ -641,26 +753,41 @@ export function collapseAliasKeys(keys: KeyEntry[], masters: string[]): KeyEntry
       byName.set(dest, { ...k, name: dest });
       continue;
     }
+    const prevAcc = parseAccountIndex(prev.derivation) ?? aliasAccountIndex(prev.name) ?? 0;
+    const kAcc = parseAccountIndex(k.derivation) ?? aliasAccountIndex(k.name) ?? 0;
+    const kIsMaster = kAcc === 0 && prevAcc !== 0;
     if (k.xpub && k.xpub !== prev.xpub) {
-      if (!prev.children.some((c) => c.xpub === k.xpub)) {
-        prev.children = [
-          ...prev.children,
-          {
-            id: uid("ck"),
-            path: k.derivation || k.childPath || "",
-            xpub: k.xpub,
-            fingerprint: k.fingerprint,
-            note: sanitizeKeyNote(k.note),
-          },
-        ];
+      const masterSrc = kIsMaster ? k : prev;
+      const childSrc = kIsMaster ? prev : k;
+      const childPath = kIsMaster
+        ? prev.derivation || prev.childPath || ""
+        : k.derivation || k.childPath || "";
+      const children = [...masterSrc.children];
+      if (!children.some((c) => c.xpub === childSrc.xpub)) {
+        children.push({
+          id: uid("ck"),
+          path: childPath,
+          xpub: childSrc.xpub,
+          fingerprint: childSrc.fingerprint,
+          note: sanitizeKeyNote(childSrc.note),
+        });
       }
+      byName.set(dest, {
+        ...masterSrc,
+        name: dest,
+        note: pickNote(masterSrc.note, childSrc.note, prev.note, k.note),
+        children,
+      });
     } else if (!prev.xpub && k.xpub) {
       byName.set(dest, {
         ...prev,
         xpub: k.xpub,
         fingerprint: k.fingerprint || prev.fingerprint,
         derivation: k.derivation || prev.derivation,
+        note: pickNote(prev.note, k.note),
       });
+    } else {
+      byName.set(dest, { ...prev, note: pickNote(prev.note, k.note) });
     }
   }
   return [...byName.values()];
@@ -763,6 +890,15 @@ export function formatScriptPath(k: KeyEntry): string {
   return `${multi}/*`;
 }
 
+function humanLabelFromJson(rec: Record<string, unknown>): string {
+  if (firstString(rec, ["format"]) === "scriptwerk") return "";
+  const label = firstString(rec, ["label", "note"]);
+  const name = firstString(rec, ["name"]);
+  if (label) return sanitizeKeyNote(label);
+  if (name && name.toLowerCase() !== "scriptwerk") return sanitizeKeyNote(name);
+  return "";
+}
+
 function firstString(rec: Record<string, unknown>, keys: string[]): string {
   for (const key of keys) {
     const v = rec[key];
@@ -811,6 +947,8 @@ function fromJsonBlob(text: string): ParsedKeyExpr | null {
     if (out.kind === "alias" || !out.xpub) return null;
     if (der && !out.derivation) out.derivation = normalizePath(der);
     if (fp && !out.fingerprint) out.fingerprint = formatFingerprint(fp);
+    const label = humanLabelFromJson(rec);
+    if (label) out.note = label;
     return out;
   } catch {
     return null;
@@ -872,6 +1010,7 @@ export function applyKeyMaterial(entry: KeyEntry, text: string): ApplyKeyResult 
       xpub: parsed.xpub,
       multipath: parsed.multipath || parent.multipath,
       childPath: parsed.childPath || parent.childPath,
+      note: parsed.note || parent.note,
     },
   };
 }

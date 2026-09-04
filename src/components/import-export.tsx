@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { compileBsms, compileDescriptorCached } from "@/lib/miniscript/compile";
+import { formatExportWithKeys, formatKeyList } from "@/lib/miniscript/keys";
 import {
   compileBip388,
   formatBitboxJson,
@@ -75,9 +76,10 @@ export function ImportExportBar() {
       toast.error(compiled?.error ?? t("export.none"));
       return;
     }
-    download("scriptwerk.miniscript.txt", compiled.miniscript);
-    download("scriptwerk.descriptor.txt", compiled.descriptor);
-    download("scriptwerk.bsms", compileBsms(compiled.descriptor));
+    download("scriptwerk.keys.txt", formatKeyList(keys));
+    download("scriptwerk.miniscript.txt", formatExportWithKeys(compiled.miniscript, keys));
+    download("scriptwerk.descriptor.txt", formatExportWithKeys(compiled.descriptor, keys));
+    download("scriptwerk.bsms", `${compileBsms(compiled.descriptor)}\n${formatExportWithKeys("", keys).trim()}`);
     download(
       "scriptwerk.json",
       formatScriptwerkJson({

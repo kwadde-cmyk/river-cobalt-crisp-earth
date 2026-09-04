@@ -609,6 +609,7 @@ export function formatScriptwerkJson(opts: {
       network: opts.network,
       keys: opts.keys.map((k) => ({
         name: k.name,
+        label: k.note,
         note: k.note,
         fingerprint: k.fingerprint,
         derivation: k.derivation,
@@ -619,6 +620,7 @@ export function formatScriptwerkJson(opts: {
           xpub: c.xpub,
           fingerprint: c.fingerprint,
           note: c.note,
+          label: c.note,
         })),
       })),
     },
